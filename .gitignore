@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+out/
+.env
+.env.local
+.env*.local
+*.log
+.DS_Store
+.turbo/
+coverage/
+# Local dev data store (names service) + key material
+.data/
+*.pem
+*.key

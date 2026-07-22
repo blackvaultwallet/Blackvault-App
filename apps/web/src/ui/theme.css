@@ -1,0 +1,402 @@
+/* ============================================================
+   BlackVault UI theme — EVERY visual knob lives here.
+   Edit this file to restyle the whole app; components only
+   reference variables, never raw values.
+   Reference: "UI BLACKVAULT.pdf" (dark, green-tinted, glassy).
+   ============================================================ */
+
+:root {
+  /* --- surfaces (black leather, per logo) --- */
+  --bg: #0a0a0b; /* page */
+  --bg-sheen: radial-gradient(
+    130% 85% at 50% -12%,
+    rgba(216, 180, 94, 0.30) 0%,
+    rgba(206, 168, 91, 0.10) 40%,
+    transparent 72%
+  ); /* warm gold glow behind hero (reference-style ambient) */
+  --surface: rgba(18, 17, 15, 0.55); /* card, translucent */
+  --surface-solid: #121110; /* sheet, nav, opaque */
+  --surface-2: #1c1a16; /* nested chip / input */
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* --- text --- */
+  --text: #f4f2ed;
+  --text-dim: #a09a8e; /* secondary, warm gray */
+  --text-faint: #635f56; /* dimmed decimals, placeholders */
+
+  /* --- brand & signals (brushed gold) --- */
+  --brand: #d8b45e; /* gold — privacy/brand accents */
+  --brand-strong: #e8cd85; /* highlight edge */
+  --brand-soft: rgba(216, 180, 94, 0.12);
+  --brand-gradient: linear-gradient(135deg, #e8cd85 0%, #c9a24b 55%, #8f6f2e 100%);
+  --cta: #f5f4f1; /* primary button (white pill, PDF-style) */
+  --cta-text: #0b0a09;
+  --positive: #79d99c;
+  --negative: #ef7370;
+  --warning: #e2c37e;
+
+  /* --- shape --- */
+  --r-card: 20px;
+  --r-control: 12px;
+  --r-pill: 999px;
+
+  /* --- type scale --- */
+  --fs-hero: 2.25rem; /* big balance */
+  --fs-title: 1rem;
+  --fs-body: 0.875rem;
+  --fs-label: 0.6875rem; /* uppercase section labels */
+
+  /* --- motion --- */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --t-press: 160ms;
+  --t-fade: 200ms;
+}
+
+/* ---------- base primitives (class layer) ---------- */
+
+.bv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  backdrop-filter: blur(6px);
+}
+
+.bv-label {
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* buttons — all pressables scale on press */
+.bv-press {
+  transition: transform var(--t-press) var(--ease-out);
+}
+.bv-press:active {
+  transform: scale(0.97);
+}
+.bv-press:focus-visible,
+.bv-input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.bv-btn-primary {
+  background: var(--cta);
+  color: var(--cta-text);
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+.bv-btn-primary:disabled {
+  opacity: 0.45;
+}
+
+.bv-btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bv-btn-ghost:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+}
+
+.bv-btn-brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+}
+
+/* circular quick-action (icon over tiny label) */
+.bv-action {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+/* inputs */
+.bv-input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  transition: border-color var(--t-fade) ease;
+}
+.bv-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+.bv-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* skeleton shimmer */
+.bv-skeleton {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--r-control);
+  animation: bv-pulse 1.6s var(--ease-in-out) infinite;
+}
+@keyframes bv-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* entry fade for cards/lists */
+.bv-enter {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--t-fade) var(--ease-out),
+    transform var(--t-fade) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ---------- intro-slide animation kit ---------- */
+
+/* gentle vertical bob for floating asset cards */
+.bv-float {
+  animation: bv-float 4.5s var(--ease-in-out) infinite;
+}
+@keyframes bv-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+/* slow smoky glow drifting behind the intro (video's moving background) */
+.bv-smoke {
+  background:
+    radial-gradient(60% 45% at 20% 25%, rgba(216, 180, 94, 0.14), transparent 70%),
+    radial-gradient(55% 40% at 85% 65%, rgba(143, 111, 46, 0.12), transparent 70%),
+    radial-gradient(70% 55% at 55% 100%, rgba(216, 180, 94, 0.07), transparent 75%);
+  background-size: 160% 160%;
+  animation: bv-drift 16s var(--ease-in-out) infinite alternate;
+}
+@keyframes bv-drift {
+  0% {
+    background-position:
+      0% 0%,
+      100% 100%,
+      50% 100%;
+  }
+  100% {
+    background-position:
+      60% 40%,
+      30% 20%,
+      20% 60%;
+  }
+}
+
+/* entrance: blur + slide-up, staggered via inline animation-delay */
+.bv-rise {
+  animation: bv-rise 650ms var(--ease-out) both;
+}
+@keyframes bv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* coin orbit: each item circles the center and stays upright */
+.bv-orbit-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -14px 0 0 -14px;
+  animation: bv-orbit 9s linear infinite;
+}
+@keyframes bv-orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-r, 120px)) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-r, 120px)) rotate(-360deg);
+  }
+}
+
+/* full-page entrance: the screen rises from the bottom on mount */
+.bv-page-in {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 420ms var(--ease-out),
+    opacity 420ms var(--ease-out);
+  @starting-style {
+    transform: translateY(14vh);
+    opacity: 0;
+  }
+}
+
+/* bottom-sheet entrance: slides up from below on mount */
+.bv-sheet-in {
+  transform: translateY(0);
+  transition: transform 320ms var(--ease-out);
+  @starting-style {
+    transform: translateY(110%);
+  }
+}
+
+/* CTA shine — a highlight strip sweeping left → right, repeating */
+.bv-shine {
+  position: relative;
+  overflow: hidden;
+}
+.bv-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(216, 180, 94, 0.45) 48%,
+    rgba(232, 205, 133, 0.65) 52%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: bv-shine 2.8s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+@keyframes bv-shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  45%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* chart line self-draws on mount (polyline needs pathLength="1") */
+.bv-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: bv-draw 1s var(--ease-out) forwards;
+}
+@keyframes bv-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* area fill fades in behind the drawing line */
+.bv-chart-fill {
+  opacity: 0;
+  animation: bv-chart-fill 0.7s ease 0.35s forwards;
+}
+@keyframes bv-chart-fill {
+  to {
+    opacity: 1;
+  }
+}
+
+/* marching dashes for the private-transfer path */
+.bv-dash {
+  stroke-dasharray: 6 8;
+  animation: bv-dash 1.2s linear infinite;
+}
+@keyframes bv-dash {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+/* running gold border beam — a thin stroke that travels around a card.
+   Registered custom property so the conic angle can actually animate. */
+@property --bv-beam {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.bv-beam {
+  position: relative;
+}
+.bv-beam::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--bv-beam),
+    transparent 0deg 250deg,
+    rgba(216, 180, 94, 0.12) 300deg,
+    var(--brand) 342deg,
+    rgba(216, 180, 94, 0.12) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: bv-beam-run 3.2s linear infinite;
+}
+@keyframes bv-beam-run {
+  to {
+    --bv-beam: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bv-press,
+  .bv-enter {
+    transition: none;
+  }
+  .bv-skeleton,
+  .bv-float,
+  .bv-smoke,
+  .bv-dash,
+  .bv-rise {
+    animation: none;
+  }
+  .bv-beam::before {
+    animation: none;
+  }
+  .bv-shine::after {
+    animation: none;
+    opacity: 0;
+  }
+  .bv-page-in,
+  .bv-sheet-in {
+    transition: none;
+  }
+  .bv-orbit-item {
+    animation-duration: 30s;
+  }
+  .bv-draw,
+  .bv-chart-fill {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
