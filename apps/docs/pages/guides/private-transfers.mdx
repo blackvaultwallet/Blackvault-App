@@ -1,0 +1,47 @@
+# Private Transfers
+
+Private transfers use **stealth addresses** (ERC-5564): money lands on a fresh
+one-time address that only the recipient can spend. On-chain, there is no link
+between sender and receiver.
+
+## Enable your private balance
+
+Open the **Private Vault** tab and tap **Check incoming** once. You'll sign a
+single message — that signature deterministically derives your **stealth
+identity** (a spending keypair and a viewing keypair).
+
+- Keys live only in your session — they are **never stored** on disk.
+- Reloading the app just re-derives them with another signature.
+
+## Receive privately
+
+**Private Vault → Receive** shows your private address:
+
+```
+st:eth:0x…
+```
+
+Share it (or its QR). Every payment to it lands on a **different** one-time
+address — payers can't see your balance, and observers can't connect payments
+to you or to each other.
+
+## Send privately
+
+1. **Private Vault → Send**.
+2. Paste the recipient's `st:eth:…` address (ENS names can't receive privately —
+   they resolve to public addresses).
+3. Amount + asset → the full-screen confirm shows from/to/network/fee →
+   **slide to confirm**.
+4. The app computes the one-time address, announces it on the ERC-5564
+   registry, then moves the funds — with the receipt checked at every step so
+   a failed announce can never strand money.
+
+The spend comes from your **public** balance; privacy protects the
+**recipient** side of the payment.
+
+## Scan & claim
+
+**Check incoming** scans the chain for payments addressed to you (using your
+viewing key — only you can recognize them) and lists what it finds. **Claim**
+sweeps a payment into your wallet; ERC-20 claims are automatically topped up
+with just-in-time gas so a fresh stealth address can still move tokens.

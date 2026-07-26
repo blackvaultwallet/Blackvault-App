@@ -108,21 +108,16 @@ export function LoginScreen({ onBack }: { onBack: () => void }) {
 
       {!awaitingCode ? (
         /* ---------- email step ---------- */
-        <div className="relative flex w-full max-w-sm flex-1 flex-col justify-center pb-10">
+        <div className="relative flex w-full max-w-sm flex-1 flex-col justify-center pb-28">
           <div className="text-center">
-            <span
-              className="bv-rise mx-auto flex h-12 w-12 items-center justify-center font-mono text-lg font-bold"
-              style={{
-                background: "var(--brand-gradient)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                border: "1px solid var(--brand-soft)",
-                borderRadius: 14,
-                animationDelay: "80ms",
-              }}
-            >
-              V
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/login-logo.png"
+              alt="BlackVault"
+              draggable={false}
+              className="bv-rise mx-auto h-36 w-36 select-none object-contain"
+              style={{ animationDelay: "80ms" }}
+            />
             <h1
               className="bv-rise mt-5 text-3xl font-semibold tracking-tight"
               style={{ animationDelay: "160ms" }}

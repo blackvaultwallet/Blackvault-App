@@ -1,0 +1,122 @@
+# Vault Keeper (AI Agent)
+
+Vault Keeper is BlackVault's AI layer — an **AI private banker** that reads your
+portfolio, explains it, and guards your privacy. It ships in two phases: a
+**read-and-suggest advisor** (the current architecture) and a **policy-bound
+autonomous agent** (on the [roadmap](/roadmap)).
+
+The design principle is the same one that governs the wallet's keys: **the agent
+never holds power it doesn't strictly need.** In phase one it can read but never
+act. In phase two it can act, but only inside limits you sign for and can revoke.
+
+## Phase 1 — Read & Suggest
+
+The advisor answers questions about your holdings in plain language — *"is my
+balance exposed?"*, *"should I shield this before withdrawing?"* — grounded in
+your **real portfolio**, never generic advice. It **explains and suggests; it
+never executes.** You always decide and sign.
+
+### How it works
+
+```
+your device                     BlackVault server              Claude (Anthropic)
+───────────                     ─────────────────              ──────────────────
+read portfolio on-chain
+  (balances, tokens, privacy
+   state — read-only)
+POST /api/agent ──────────────► rate-limit (per IP)
+  { message, portfolio,         build context (pure fn):
+    privacy }                     portfolio + privacy state
+                                  → text summary
+                                system prompt: "Vault Keeper"
+                                  persona (banker + privacy
+                                  guardian, suggest-only)
+                                messages.create ─────────────► reason over context
+                                                                (adaptive thinking)
+                                { reply } ◄─────────────────── grounded answer
+reply shown ◄─────────────────
+```
+
+### Architecture
+
+- **Prompt construction is a pure function.** Turning a portfolio into the
+  model's context is deterministic and unit-tested, isolated from any network or
+  key material. Given the same portfolio it produces the same context.
+- **The model is called server-side only.** The request to Claude runs in a
+  Node.js route on BlackVault's server. The API key lives in server environment
+  only — it is never shipped to, or reachable from, the browser.
+- **The agent is structurally read-only.** It receives a *summary* of your
+  portfolio as text. It holds no private key, has no signing path, and has no
+  tool that can move funds. Read-only is enforced by the architecture, not merely
+  requested in the prompt.
+- **Metered.** The route is rate-limited per IP, because a paid model sits behind
+  it. This bounds cost and abuse without touching your funds.
+
+### The persona
+
+The system prompt binds the model to act like a real private banker:
+
+- **Calm and precise** — no hype, no promised returns, no binding financial
+  advice. Options and considerations, not guarantees.
+- **Privacy guardian** — it warns when an action could leak privacy: address
+  linking, amount correlation, deanonymization. It recommends concrete practices
+  — round amounts, time between deposit and withdrawal, avoid withdrawing the
+  same amount you deposited, keep funds shielded while idle.
+- **Grounded** — every suggestion cites your actual portfolio data. If the data
+  isn't there, it says so rather than inventing it.
+
+### What the model sees — and doesn't
+
+- **Sees:** a text summary of balances, token types, sub-account count, and
+  whether your private vault is active — for the length of one answer.
+- **Doesn't see:** your keys, your seed, your private activity log (that never
+  leaves your device), or any other user's data.
+- **Not stored:** the context is assembled per request and passed for that one
+  reply. There is no profile that accumulates across sessions.
+
+## Phase 2 — Policy-Bound Autonomous Agent
+
+The roadmap phase turns the advisor into an agent that can **act on your behalf**
+— but only inside permissions you grant explicitly and can revoke at any time.
+
+- **Auto-shield** — sweep incoming funds into your private balance on a schedule
+  you set, so value doesn't sit exposed while you're away.
+- **Policy-bound** — every action is checked against limits you sign: amount
+  caps, destination allowlists, expiry. Outside the policy, the agent simply
+  cannot act.
+- **Session keys** — authority is delegated through a **revocable session key**
+  (ERC-7715 / ERC-7702), scoped to the policy and time-boxed. The agent **never
+  touches your main key**; revoking the session ends its power instantly.
+
+This inverts the usual trade-off with automation. You don't hand an agent your
+wallet — you hand it a **narrow, expiring, revocable permission**, and it
+operates strictly within that envelope. The same "least authority" rule as
+phase one, now extended to a key that can sign.
+
+### Why it's deferred
+
+Autonomous shielding is only meaningful once the primitives it automates are
+live and stable on mainnet — **stealth transfers** and **gasless execution**.
+Building the agent before those settle would automate a moving target. Phase two
+lands after they do.
+
+## Honest status
+
+- **Phase 1 engine** — built and tested: the pure-function context builder, the
+  server-side route, and the private-banker persona all exist and run.
+- **Phase 1 surface** — the chat interface was written for the earlier Solana
+  build; wiring it into the current EVM app (porting the portfolio context to
+  native + ERC-20) is the remaining step to expose it to users.
+- **Phase 2** — designed, not yet built. Deferred until stealth and gasless are
+  stable on mainnet.
+
+## Design properties
+
+- **Least authority, always** — read-only in phase one; a narrow revocable
+  session key in phase two. The agent never has more power than the task needs.
+- **You stay the signer** — the agent proposes; you dispose. Even in phase two,
+  it acts only inside a policy you signed.
+- **Privacy-native** — the AI's whole job includes protecting your privacy, not
+  just answering questions. It is a guardian by design, not an afterthought.
+- **Grounded, not generic** — advice is computed from your real state, and the
+  model is told to admit when it lacks the data rather than guess.

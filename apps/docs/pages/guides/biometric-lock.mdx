@@ -1,0 +1,29 @@
+# Biometric Lock
+
+Bank-style app lock backed by your device's biometrics — Face ID, fingerprint,
+or Windows Hello (WebAuthn platform authenticator).
+
+## Enable
+
+**Settings → Biometric / Face ID → Enable** → your device prompts for
+biometrics → the lock is armed.
+
+## What it gates
+
+| Moment | Behaviour |
+| --- | --- |
+| Opening the app (every page load / refresh) | Full-screen **Vault locked** — unlock with your face |
+| First entry to the **Private Vault** per session | Verify again (cancellable) |
+| **Export private key** | Verify before the key is shown |
+| **Disabling the lock** | Verify — nobody can switch it off silently |
+
+## What it is (and isn't)
+
+- The lock protects the **app UI** on your device — someone holding your
+  unlocked phone still can't open the vault, see private balances, or export
+  the key.
+- Sign-in stays **Google/email**, so switching accounts is unaffected.
+- Custody itself is held by your wallet session and passkeys; the lock is an
+  extra gate in front of it, not a replacement.
+
+Disable any time from the same Settings row (biometric check required).

@@ -10,7 +10,7 @@ import { Drawer } from "vaul";
 import { parseUnits } from "viem";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { useEvmWallet } from "@/lib/chain/evm/wallet";
-import { getEvmChainAdapter } from "@/lib/chain";
+import { getEvmAdapter } from "@/lib/chain/evm/adapter";
 import { findEvmToken } from "@/lib/chain/evm/tokens";
 import {
   claimTerms,
@@ -145,7 +145,7 @@ export function EvmUsernameSheet({
         if (!terms?.revenueAddr) throw new Error("Claim service not configured");
         const usdg = findEvmToken("USDG");
         if (!usdg?.address || !walletClient) throw new Error("Wallet not ready");
-        const adapter = getEvmChainAdapter(walletClient);
+        const adapter = getEvmAdapter(walletClient);
         // Gas preflight — a USDG payment still needs ETH for the fee.
         const bals = await adapter.getBalances(address);
         if ((bals.find((b) => b.token.symbol === "ETH")?.amount ?? 0) <= 0) {

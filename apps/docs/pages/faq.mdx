@@ -1,0 +1,54 @@
+# FAQ
+
+### Is BlackVault a bank?
+
+No. BlackVault is self-custodial software — you hold the keys, we never touch
+funds. "Private banking" describes the experience, not a license.
+
+### Which network does it run on?
+
+Robinhood Chain mainnet (chainId `4663`), an Arbitrum Orbit chain. Fees cost a
+fraction of a cent. Ethereum, Arbitrum, Base, and Optimism are staged as
+upcoming networks.
+
+### What do private transfers actually hide?
+
+The link between sender and recipient. Funds land on one-time addresses that
+observers can't connect to anyone. Amounts remain visible on-chain; hiding
+amounts (shielded pools) is on the [roadmap](/roadmap).
+
+### Can someone find my money if they see my st:eth address?
+
+No. The `st:eth:…` string is a *meta*-address — payments to it are delivered
+to fresh addresses derivable only with your keys. Sharing it reveals nothing
+about your balance or history.
+
+### What happens if I clear my browser or lose my device?
+
+Sign back in with Google/email — your wallet and names come back. Your stealth
+identity re-derives from a signature, and scanning re-finds unclaimed
+payments. The local activity journal and private log are device-only and
+won't follow you.
+
+### Why does the app say "No ETH for gas"?
+
+Every transaction needs a tiny ETH fee. Bridge a little ETH to your address
+and the warning disappears — the app blocks sends early rather than letting
+them hang.
+
+### How much does a name cost?
+
+Free or a small one-time USDG fee, depending on current settings — the price
+is always shown before you slide to claim. Changing your name costs the fee
+again and releases the old name.
+
+### Can I use my key elsewhere?
+
+Yes — export it any time (Settings → Export private key) and import into
+MetaMask, Rabby, or any EVM wallet.
+
+### Is the code open?
+
+The architecture, mechanisms, and complete UI are public in
+[`Blackvault-App`](https://github.com/blackvaultwallet/Blackvault-App); the
+deployable core is private while the product matures.

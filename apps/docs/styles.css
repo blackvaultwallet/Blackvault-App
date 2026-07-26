@@ -1,0 +1,169 @@
+/* BlackVault docs skin — futuristic dark + gold, HYRE-style. */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600&display=swap");
+
+:root {
+  --bv-gold: #d8b45e;
+  --bv-gold-soft: rgba(216, 180, 94, 0.12);
+  --bv-bg: #0a0a0b;
+}
+
+/* base */
+html.dark body,
+html.dark .nextra-nav-container nav,
+html.dark aside,
+html.dark footer {
+  background: var(--bv-bg) !important;
+}
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ambient gold glow at the top, every page */
+html.dark main {
+  background:
+    radial-gradient(90% 40% at 50% -5%, rgba(216, 180, 94, 0.09), transparent 70%);
+}
+
+/* monospace display headings */
+h1,
+h2 {
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+  letter-spacing: -0.02em;
+}
+h1 {
+  background: linear-gradient(120deg, #ffffff 30%, var(--bv-gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* eyebrow label above H1 (use with **Label** as first line if desired) */
+.bv-eyebrow {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bv-gold);
+}
+
+/* under-development badge */
+.bv-dev {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bv-gold);
+  background: var(--bv-gold-soft);
+  border: 1px solid rgba(216, 180, 94, 0.4);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.bv-dev::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bv-gold);
+  box-shadow: 0 0 8px var(--bv-gold);
+}
+
+/* wallet-style cards: thin gold gradient wash, stroke-icon chip, mono title */
+.bv-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.bv-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 14px;
+  background:
+    linear-gradient(155deg, rgba(216, 180, 94, 0.13), rgba(216, 180, 94, 0.03) 45%, transparent 70%),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(216, 180, 94, 0.18);
+  text-decoration: none !important;
+  color: inherit !important;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+.bv-card:hover {
+  border-color: rgba(216, 180, 94, 0.55);
+  box-shadow: 0 6px 28px rgba(216, 180, 94, 0.14);
+  transform: translateY(-2px);
+}
+.bv-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bv-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: var(--bv-gold);
+  background: rgba(216, 180, 94, 0.12);
+  border: 1px solid rgba(216, 180, 94, 0.3);
+  flex-shrink: 0;
+}
+.bv-card-title {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #f2f2f2;
+}
+.bv-card-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #a9a9ad;
+}
+
+/* sidebar: active item gold */
+html.dark .nextra-sidebar-container li.active > a {
+  color: var(--bv-gold) !important;
+  background: var(--bv-gold-soft) !important;
+}
+
+/* inline code + code blocks */
+:not(pre) > code {
+  background: rgba(216, 180, 94, 0.10) !important;
+  color: #e6cf95 !important;
+  border: 1px solid rgba(216, 180, 94, 0.22);
+  border-radius: 6px;
+}
+html.dark pre {
+  background: #0e0e10 !important;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+/* tables */
+html.dark table {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+html.dark th {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* blockquotes — gold rail */
+blockquote {
+  border-left: 3px solid var(--bv-gold) !important;
+  background: var(--bv-gold-soft);
+  border-radius: 0 10px 10px 0;
+  font-style: normal !important;
+}
+
+/* toc active */
+html.dark .nextra-toc li > a[aria-current="true"] {
+  color: var(--bv-gold) !important;
+}

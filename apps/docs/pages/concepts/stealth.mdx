@@ -1,0 +1,43 @@
+# Stealth Transfers (ERC-5564)
+
+The core privacy mechanism: every private payment lands on a **fresh one-time
+address** derived so that only the recipient can spend it.
+
+## The flow
+
+```
+sender                          chain                        recipient
+──────                          ─────                        ─────────
+                                             enable: sign once → derive
+                                             stealth identity (spending +
+                                             viewing keypairs), session-only
+paste st:eth:… meta-address
+compute one-time address P
+  (ECDH: ephemeral key × recipient
+   viewing pub, tweak spending pub)
+announce(ephemeralPub, P) ──►  ERC-5564 Announcer (canonical singleton)
+transfer funds ─────────────►  P (a fresh address, no history)
+                                             scan announcements with the
+                                             viewing key → detect P is mine
+                                             derive P's key → claim/sweep
+```
+
+## Properties
+
+- **Unlinkability** — each payment uses a new address; observers can't connect
+  payments to each other or to the recipient's public identity.
+- **Only you can find your money** — detecting "this payment is mine" requires
+  the viewing key; spending it requires the spending key. Both derive from one
+  wallet signature and are never written to disk.
+- **No stranded funds** — the announcement is validated before value moves,
+  and every step checks its receipt.
+- **Standard, not custom crypto** — ERC-5564 + the canonical ERC-6538 registry,
+  the same singleton contracts used across EVM chains.
+
+## Honest limits
+
+- Privacy covers the **recipient**: the sender's public wallet visibly spends
+  funds (to an address nobody can interpret). Sender-side privacy (shielded
+  pools) is on the [roadmap](/roadmap).
+- Amounts are visible on-chain — what's hidden is *who received them*.
+- Your private log (what you sent/claimed) lives only on your device.

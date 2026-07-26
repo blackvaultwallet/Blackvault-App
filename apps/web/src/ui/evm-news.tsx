@@ -7,6 +7,7 @@
 // image CDN never sees the user), and a live refresh every 60s. Max 20 cards.
 
 import { useEffect, useRef, useState } from "react";
+import { relTime } from "@/lib/rel-time";
 
 interface Item {
   title: string;
@@ -28,12 +29,6 @@ const SOURCE_COLOR: Record<string, string> = {
   X: "#e7e7e7",
 };
 
-function relTime(ms: number): string {
-  const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
 const proxied = (u: string | null) => (u ? `/api/news/img?url=${encodeURIComponent(u)}` : null);
 
 function SearchIcon() {

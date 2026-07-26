@@ -16,6 +16,7 @@ import {
   getAddress,
   type Address,
 } from "viem";
+import { relTime } from "@/lib/rel-time";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
 import { EVM_TOKENS } from "@/lib/chain/evm/tokens";
 import { mapLimit } from "@/lib/chain/evm/async-util";
@@ -118,13 +119,6 @@ async function fetchTransfers(owner: Address, lookback: bigint): Promise<Item[]>
     .sort((a, b) => Number(b.block - a.block));
 }
 
-function relTime(ms: number): string {
-  const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 export function EvmActivity({
   address,

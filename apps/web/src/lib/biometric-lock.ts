@@ -24,10 +24,6 @@ const b64 = (buf: ArrayBuffer) =>
 const unb64 = (s: string) =>
   Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
-export function lockSupported(): boolean {
-  return typeof window !== "undefined" && !!window.PublicKeyCredential;
-}
-
 export function lockEnabled(): boolean {
   try {
     return !!localStorage.getItem(KEY);

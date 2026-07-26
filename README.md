@@ -1,54 +1,49 @@
-# BlackVault — Private Banking On-Chain
+# BlackVault
 
-**Live at [app.blackvault.cash](https://app.blackvault.cash)** — a privacy-first
-wallet on **Robinhood Chain** (mainnet). Stealth transfers, human-readable
-private payments, biometric app lock, and an AI vault keeper — private by
-default, auditable by choice.
+A privacy-first crypto wallet. Send, receive, and hold with sender/recipient
+privacy built in — recipient-privacy on EVM via ERC-5564 stealth addresses,
+full shielded transfers on Solana via Umbra, plus a self-hosted ENS subname
+service (`*.blackvaultwallet.eth`) for human-readable, private addresses.
 
-> **This is the source-available release.** The complete UI, the project
-> structure, the dependency graph, and every mechanism are here to read —
-> but the core server routes, the stealth-rail internals, and the payment
-> verification are **redacted stubs** (each file documents its mechanism and
-> points to [ARCHITECTURE.md](./ARCHITECTURE.md)). This release is not meant to
-> build or run; the deployable source lives in a private repository.
-
-## What the product does
-
-- **Public + private money on one home.** Regular sends, and stealth sends
-  (ERC-5564) where the recipient is a one-time address only they can spend —
-  no link between sender and receiver on-chain.
-- **BlackVault Names** — self-hosted ENS subnames (`you.blackvaultwallet.eth`)
-  with an optional on-chain USDG claim fee, resolvable anywhere ENS works
-  (CCIP-Read gateway + on-chain resolver).
-- **IP privacy everywhere.** RPC, ENS lookups, prices, news, images, and
-  embeds are all same-origin proxies — no third party ever sees a user IP
-  next to a wallet address.
-- **Biometric app lock** (WebAuthn platform credential) gating app open, the
-  Private Vault, and key export. Sign-in stays Google/email via embedded
-  wallets (Privy) — real key export anytime.
-- **Full-story Activity** — semantic journal (name purchases, QR payments,
-  payment requests) merged with on-chain transfers and the private log.
-- **Vault Keeper** — an AI assistant with portfolio context, served through a
-  rate-limited backend.
-- **Private Degen (soon)** — shielded trading preview driven by live trending
-  data for RH Chain pools.
+> **Status:** active development. Not audited. Do not use with real funds on
+> mainnet yet. Some `api/*` routes are dev/testnet-only spikes — see
+> [Security](#security) before hosting.
 
 ## Stack
 
-Next.js 16 (App Router) · React 19 · Tailwind · viem · Privy embedded wallets
-· Upstash Redis (rate limiting) · Postgres/Supabase (names) · Alchemy +
-Blockscout RPC split · deployed on Vercel. Monorepo: `apps/web` + `packages/sdk`.
+- **apps/web** — Next.js 16 (App Router, Turbopack), React 19, Tailwind.
+  Embedded wallets via Privy.
+- **packages/sdk** — chain adapters and the shared privacy-rail interface.
+- Chain is selected at build time with `NEXT_PUBLIC_CHAIN`
+  (`robinhood` for Robinhood Chain / EVM, `solana` for Solana).
 
-## Reading guide
+## Features
 
-| Where | What you'll find |
-| --- | --- |
-| `apps/web/src/ui/` | The complete production UI, unredacted |
-| `apps/web/src/app/api/` | Server routes as documented stubs (mechanism per file) |
-| `apps/web/src/lib/chain/` | Chain adapters; stealth core + rail are documented stubs |
-| `ARCHITECTURE.md` | End-to-end flows: stealth transfer, paid names, proxy privacy, app lock |
+- Stealth send/receive (recipient privacy) on EVM; shielded pool on Solana.
+- IP privacy: RPC, ENS, news, and image requests are proxied server-side so
+  providers never see the user's IP.
+- BlackVault Names — self-hosted ENS subname issuance (CCIP-Read offchain
+  resolver), verified end-to-end on Sepolia.
+- News Hub, private payment requests (QR + link), and a Vault Keeper assistant.
+
+## Getting started
+
+```bash
+pnpm install
+cp apps/web/.env.local.example apps/web/.env.local   # then fill in the values
+pnpm --filter web dev
+```
+
+Requires Node 20+ and pnpm.
+
+## Security
+
+- Secrets live only in `.env.local` (gitignored) — never commit them.
+- The `NAMES_*` signing key must be a **throwaway testnet key** until mainnet.
+- Before public hosting or mainnet: add auth + rate limiting to `api/agent`,
+  and gate or remove the server-spend dev routes (`api/sns/*`, `api/umbra/*`)
+  behind a `NODE_ENV === 'production'` guard.
 
 ## License
 
-No license is granted. All rights reserved — this repository exists for
-transparency and review, not for reuse.
+No license granted yet — all rights reserved until one is added.

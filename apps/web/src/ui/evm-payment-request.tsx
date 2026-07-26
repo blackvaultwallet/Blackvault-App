@@ -80,7 +80,7 @@ export function EvmPaymentRequest({
               style={{ background: "var(--border-strong)", borderRadius: "var(--r-pill)" }}
             />
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold">Request private payment</h3>
+              <h3 className="text-base font-semibold">Private Merchant</h3>
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-medium"
                 style={{ background: "var(--brand-soft)", border: "1px solid rgba(216,180,94,0.3)", color: "var(--brand)" }}
@@ -89,8 +89,8 @@ export function EvmPaymentRequest({
               </span>
             </div>
             <p className="mt-1 text-[11px]" style={{ color: "var(--text-faint)" }}>
-              Payer sends to your stealth address — you stay unlinked. For a public
-              request, use Receive.
+              Get paid without being seen — every payment lands on a fresh stealth
+              address. For a public request, use Receive.
             </p>
 
             {/* token row */}

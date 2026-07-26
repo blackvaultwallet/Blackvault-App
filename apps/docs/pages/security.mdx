@@ -1,0 +1,45 @@
+# Security
+
+What BlackVault protects, how, and where the honest limits are.
+
+## Protections in place
+
+- **Consent on every transfer** — nothing signs without an explicit
+  slide-to-confirm; public sends show the resolved destination first.
+- **Biometric vault lock** — app open, Private Vault, and key export sit
+  behind your device biometrics (WebAuthn, `userVerification: required`).
+- **Stealth keys never at rest** — derived per session from a wallet
+  signature; only public scan progress is persisted.
+- **Payment verification on-chain** — name claims check the actual transfer
+  receipt; payment hashes are single-use forever.
+- **Strict CSP + security headers** — the browser can only talk to
+  BlackVault's origin; framing is denied, HSTS enforced.
+- **SSRF-hardened proxies & per-IP rate limits** across the API surface.
+- **Fail-safe ordering** — announcements verified before funds move; every
+  step receipt-checked; failed steps abort rather than strand value.
+
+## Security-first development
+
+BlackVault is built fund-safety-first: standard, battle-tested contracts
+(ERC-5564 / ERC-6538 singletons), receipt-checked transaction ordering, and a
+hardened server surface (SSRF-guarded proxies, per-IP rate limits, strict CSP).
+Security review is a continuous, ongoing part of how the product ships.
+
+## Scope of privacy — read this
+
+- **Recipient privacy, today** — stealth addresses hide who *receives*;
+  sender-side shielding (private pools) is on the [roadmap](/roadmap).
+- **Amounts are public** — what's hidden is the link between people, not the
+  numbers. Amount-hiding pools are a planned upgrade.
+- **Device security matters** — the vault lock is UI protection on your
+  device; a fully compromised device or Google account is outside any
+  wallet's control. Protect your sign-in with passkeys.
+
+Use amounts you're comfortable with as the product matures.
+
+## Responsible disclosure
+
+Found a vulnerability? Please report it privately first — open a security
+advisory on GitHub ([blackvaultwallet](https://github.com/blackvaultwallet))
+or contact the team through the app. We take reports seriously and respond
+fast.

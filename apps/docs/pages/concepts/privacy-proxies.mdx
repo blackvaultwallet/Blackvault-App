@@ -1,0 +1,34 @@
+# Privacy Proxies
+
+On-chain privacy is pointless if your **IP address** gives you away off-chain.
+A typical wallet queries an RPC provider directly from your browser — handing
+that provider a neat log of *your IP next to every address you care about*.
+
+BlackVault's browser talks **only to BlackVault's own origin**. Server-side
+proxies relay everything:
+
+| Traffic | Proxied |
+| --- | --- |
+| Chain reads & broadcasts (JSON-RPC) | ✔ |
+| ENS / name resolution | ✔ |
+| Price quotes & chart history | ✔ |
+| News feeds & article thumbnails | ✔ |
+| Social embeds | ✔ |
+| Trending market data | ✔ |
+
+## What this buys you
+
+- **No correlation** — RPC providers, price APIs, and CDNs see BlackVault's
+  server, never you.
+- **Shared caching** — one upstream call serves every user for that window;
+  quotes and feeds stay live without hammering third parties.
+- **Resilience** — last-good responses are served if an upstream throttles, so
+  the UI never blanks.
+
+## Hardening on the same layer
+
+- The image proxy blocks server-side request forgery (private-range and
+  metadata IPs are rejected after DNS resolution).
+- Abuse-prone routes carry per-IP rate limits.
+- A strict Content-Security-Policy pins the browser to the app's own origin —
+  even injected code can't quietly call third parties.

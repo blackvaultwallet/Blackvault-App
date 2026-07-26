@@ -1,0 +1,41 @@
+# Names Architecture
+
+BlackVault Names are **ENS subnames** under `blackvaultwallet.eth`, issued by
+BlackVault's own self-hosted name service — no third-party issuer.
+
+## Claiming (optionally paid)
+
+```
+app: check availability → (paid mode) transfer USDG → revenue wallet
+     → claim { name, address, txHash }
+service: fetch the receipt on-chain
+         → verify the USDG Transfer log (from claimer, to revenue, ≥ price)
+         → burn the tx hash (unique — replay-proof)
+         → release the claimer's previous name → record the new one
+         (one atomic transaction)
+```
+
+Because the payment check happens **on-chain against the receipt**, there is
+nothing to fake: no payment, no name; one payment, exactly one claim.
+
+## Resolution
+
+Two paths answer "what address does this name point to?":
+
+- **In-app** — the service resolves instantly for sends and receive surfaces.
+- **ENS-native (CCIP-Read / ENSIP-10)** — an offchain resolver on Ethereum
+  reverts with `OffchainLookup`; the BlackVault gateway answers with the
+  record **signed** (`keccak(0x1900 ‖ resolver ‖ expiry ‖ hash(callData) ‖
+  hash(result))`); `resolveWithProof` verifies the signature on-chain before
+  accepting. Any ENS-aware wallet gets the same trust-minimized answer.
+
+The gateway/resolver pair has been verified end-to-end on Sepolia; mainnet
+activation of the resolver is the final step for names to resolve in every
+wallet, everywhere.
+
+## Rules
+
+- One name per wallet; claiming again releases the old name.
+- Labels: 3–20 characters, `a–z`, `0–9`, dashes.
+- Names resolve to your **public** address — private transfers keep using your
+  `st:eth:…` address.

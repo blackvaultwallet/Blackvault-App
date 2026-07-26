@@ -5,8 +5,9 @@
 // with a running gold border, then Send / Receive glass pills. Stealth has no
 // shield/unshield step, so "Check incoming" scans and claims in one.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, type WalletClient } from "viem";
+import { relTime } from "@/lib/rel-time";
 import { getEvmRail } from "@/lib/chain/evm/rail-evm";
 import {
   appendPrivateLog,
@@ -34,15 +35,6 @@ const FEED_COPY = {
   claim: { title: "Received", tone: "var(--positive)" },
   send: { title: "Sent", tone: "var(--text)" },
 } as const;
-
-function relTime(ms?: number): string {
-  if (!ms) return "pending";
-  const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function feedCard(f: PrivateLogEntry, priceOf: (s: string) => number) {
   const c = FEED_COPY[f.kind as keyof typeof FEED_COPY] ?? FEED_COPY.send;
@@ -74,7 +66,19 @@ function feedCard(f: PrivateLogEntry, priceOf: (s: string) => number) {
       </span>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">{c.title}</span>
+        <span className="flex items-center gap-1.5 truncate text-sm font-medium">
+          {c.title}
+          <span
+            className="shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold tracking-wide"
+            style={{
+              background: "var(--brand-soft)",
+              border: "1px solid rgba(216,180,94,0.35)",
+              color: "var(--brand)",
+            }}
+          >
+            Stealth
+          </span>
+        </span>
         <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
           {relTime("ts" in f ? f.ts : undefined)}
         </span>
@@ -175,6 +179,16 @@ export function EvmPrivate({
     if (address) setLog(readPrivateLog(address));
   }, [rail, enabled, address]);
 
+  // The vault gate already collected an explicit "Enable Private Vault" tap, so
+  // derive the stealth keys immediately instead of showing a second enable card.
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (autoTried.current || !rail || enabled || rail.metaAddressUri) return;
+    autoTried.current = true;
+    void enable();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rail, enabled]);
+
   async function enable() {
     if (!rail || busy) return;
     setBusy(true);
@@ -218,18 +232,23 @@ export function EvmPrivate({
   const feed = log.filter((e) => e.kind === "send" || e.kind === "claim");
 
   if (!enabled) {
+    // Auto-enable is in flight (signature prompt). This card only surfaces as a
+    // retry if the user rejects the signature.
     return (
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Private balance</h2>
+        <h2 className="text-base font-semibold">Preparing your Private Vault</h2>
         <Card>
           <div className="flex flex-col gap-3">
             <p className="text-sm" style={{ color: "var(--text-dim)" }}>
-              Stealth transfers hide who you pay and who pays you. Enable once to
-              derive your private keys — you&apos;ll sign a message, no funds move.
+              {busy
+                ? "Sign the message in your wallet to derive your private keys — no funds move."
+                : "Signature needed to derive your private keys — no funds move."}
             </p>
-            <Button onClick={enable} disabled={busy || !rail} className="h-11">
-              {busy ? "Enabling…" : "Enable private balance"}
-            </Button>
+            {!busy && (
+              <Button onClick={enable} disabled={!rail} className="h-11">
+                Continue
+              </Button>
+            )}
           </div>
         </Card>
       </div>

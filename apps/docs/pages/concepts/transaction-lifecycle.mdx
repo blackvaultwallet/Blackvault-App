@@ -1,0 +1,89 @@
+<span className="bv-eyebrow">Concepts</span>
+
+# Transaction Lifecycle
+
+Every value transfer follows a safety-ordered path. Nothing signs silently, and
+no step can strand funds.
+
+## Public send
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant App as BlackVault
+    participant P as RPC proxy
+    participant C as Robinhood Chain
+    U->>App: enter recipient (0x or name) + amount
+    App->>App: resolve name → address, gas preflight
+    App-->>U: review (resolved address, amount, network, fee)
+    U->>App: slide to confirm
+    App->>P: signed transaction
+    P->>C: broadcast
+    C-->>App: receipt (success)
+    App-->>U: ✓ done · logged in Activity
+```
+
+The **review + slide-to-confirm** gate is mandatory; the app also refuses early
+if ETH can't cover the fee.
+
+## Private (stealth) send
+
+```mermaid
+sequenceDiagram
+    participant S as Sender
+    participant App as BlackVault
+    participant Ann as ERC-5564 Announcer
+    participant P as One-time address
+    S->>App: paste st:eth:… + amount → slide to confirm
+    App->>App: compute one-time address P
+    App->>Ann: 1) announce(ephemeralPub, P)
+    Ann-->>App: receipt ✓
+    App->>P: 2) transfer funds
+    P-->>App: receipt ✓
+    App-->>S: ✓ sent — recipient stays hidden
+```
+
+**Order matters:** announce first (verified), *then* move funds. A failed
+announce aborts before value moves, so money can never land somewhere the
+recipient can't find.
+
+## Receiving privately (scan → claim)
+
+```mermaid
+sequenceDiagram
+    participant R as Recipient
+    participant App as BlackVault
+    participant Ann as ERC-5564 Announcer
+    participant P as One-time address
+    R->>App: Check incoming
+    App->>Ann: scan announcements (viewing key)
+    App-->>R: found N payments that are yours
+    R->>App: claim
+    App->>P: derive key · JIT gas · sweep to wallet
+    App-->>R: ✓ claimed
+```
+
+## Name claim (paid)
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant App as BlackVault
+    participant NS as Names service
+    participant C as Chain
+    U->>App: pick name → check availability → slide to pay
+    App->>C: transfer USDG → revenue wallet
+    C-->>App: tx hash
+    App->>NS: claim { name, address, txHash }
+    NS->>C: fetch receipt · verify USDG transfer
+    NS->>NS: burn tx hash (replay-proof) · record name
+    NS-->>App: ✓ name secured
+```
+
+## Guarantees across every path
+
+- **Explicit consent** — a slide gate before anything signs.
+- **Gas preflight** — sends refuse rather than hang on an empty tank.
+- **Receipt checks** — each step verifies success before the next.
+- **Atomic name payments** — payment verification + rename in one DB
+  transaction; a payment hash can never be reused.

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { useEvmWallet } from "@/lib/chain/evm/wallet";
-import { getEvmChainAdapter } from "@/lib/chain";
+import { getEvmAdapter } from "@/lib/chain/evm/adapter";
 import { useMarket } from "@/lib/market";
 import { Skeleton } from "@/ui/primitives";
 import { BannerCarousel } from "@/ui/banner-carousel";
@@ -37,7 +37,7 @@ export function EvmApp() {
   const { walletClient } = useEvmWallet();
   const quotes = useMarket();
   const toast = useToast();
-  const adapter = getEvmChainAdapter(walletClient ?? undefined);
+  const adapter = getEvmAdapter(walletClient ?? undefined);
 
   const [balances, setBalances] = useState<TokenBalance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,14 +61,10 @@ export function EvmApp() {
   useEffect(() => {
     queueMicrotask(() => setLocked(lockEnabled()));
   }, []);
-  // Private Vault gets its own gate: verify once per page load on first open.
-  const vaultOk = useRef(false);
-  const [vaultGate, setVaultGate] = useState(false);
+  // Private Vault gate renders inside the vault tab (header/nav stay visible):
+  // unlocked once per page load; not enrolled yet → the gate offers Enable.
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   function openTab(id: NavId) {
-    if (id === "vault" && lockEnabled() && !vaultOk.current) {
-      setVaultGate(true);
-      return;
-    }
     setTab(id);
   }
 
@@ -252,13 +248,17 @@ export function EvmApp() {
 
           {tab === "vault" && (
             <div className="mx-auto w-full max-w-md">
-              <EvmPrivate
-                wallet={walletClient}
-                address={address}
-                priceOf={price}
-                publicBalances={balances}
-                onPublicBalanceChange={refresh}
-              />
+              {vaultUnlocked ? (
+                <EvmPrivate
+                  wallet={walletClient}
+                  address={address}
+                  priceOf={price}
+                  publicBalances={balances}
+                  onPublicBalanceChange={refresh}
+                />
+              ) : (
+                <AppLock embedded onUnlock={() => setVaultUnlocked(true)} />
+              )}
             </div>
           )}
 
@@ -319,17 +319,6 @@ export function EvmApp() {
 
       <EvmPrivateScan open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScan} />
 
-      {/* biometric gate for the Private Vault */}
-      {vaultGate && (
-        <AppLock
-          onUnlock={() => {
-            vaultOk.current = true;
-            setVaultGate(false);
-            setTab("vault");
-          }}
-          onCancel={() => setVaultGate(false)}
-        />
-      )}
     </div>
   );
 }

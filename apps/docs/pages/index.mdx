@@ -1,0 +1,63 @@
+import { BvCards, BvCard } from "../components/cards";
+
+<span className="bv-eyebrow">Getting Started</span>
+
+# Welcome to BlackVault
+
+**Private banking on Robinhood Chain.** Stealth transfers, pay-by-name, and a
+Face ID vault — private by default, auditable by choice.
+
+BlackVault is a self-custodial wallet where payments never link sender to
+receiver on-chain. Sign in with Google, receive to
+`you.blackvaultwallet.eth`, and keep every balance yours to reveal — while
+your IP never appears next to your address on any third-party server.
+
+## Get Started
+
+<BvCards>
+  <BvCard icon="zap" title="Quickstart" href="/getting-started">
+    Create your vault, fund it, and lock it — under five minutes.
+  </BvCard>
+  <BvCard icon="mask" title="Go Private" href="/guides/private-transfers">
+    Enable your stealth identity and send without a trace.
+  </BvCard>
+  <BvCard icon="tag" title="Claim your Name" href="/guides/names">
+    Get you.blackvaultwallet.eth and get paid by name.
+  </BvCard>
+</BvCards>
+
+## Explore the Vault
+
+<BvCards>
+  <BvCard icon="shield" title="Stealth Vault" href="/concepts/stealth">
+    One-time addresses (ERC-5564) — nothing links sender and receiver.
+  </BvCard>
+  <BvCard icon="qr" title="Payment Requests" href="/guides/payment-requests">
+    Share a QR, get paid to your stealth address.
+  </BvCard>
+  <BvCard icon="lock" title="Biometric Lock" href="/guides/biometric-lock">
+    Face ID gates the app, the vault, and key export.
+  </BvCard>
+  <BvCard icon="globe" title="Privacy Proxies" href="/concepts/privacy-proxies">
+    Every request proxied — no IP beside your address, ever.
+  </BvCard>
+  <BvCard icon="key" title="Custody Model" href="/concepts/custody">
+    Google sign-in, passkeys, and a key you can always export.
+  </BvCard>
+  <BvCard icon="chart" title="Activity" href="/guides/activity">
+    The full story of your wallet — public, private, and actions.
+  </BvCard>
+</BvCards>
+
+## How it works
+
+| Layer | Mechanism |
+| --- | --- |
+| Privacy | ERC-5564 stealth addresses + canonical ERC-6538 registry |
+| Names | ENS subnames · CCIP-Read (ENSIP-10) signed gateway |
+| Network | Robinhood Chain mainnet · chainId `4663` · sub-cent fees |
+| Custody | Embedded wallets (Privy) · passkeys · exportable key |
+| Metadata | Same-origin proxies for RPC, prices, news, images |
+
+> Ready? **[Open the app ↗](https://app.blackvault.cash)** — or dive into the
+> [architecture](https://github.com/blackvaultwallet/Blackvault-App/blob/main/ARCHITECTURE.md).

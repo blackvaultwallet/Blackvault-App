@@ -12,7 +12,8 @@ import {
 } from "viem";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
 import { EVM_TOKENS } from "@/lib/chain/evm/tokens";
-import type { ChainAdapter, Stage, TokenBalance, TokenRef } from "@/lib/chain/types";
+import { withRetry } from "@/lib/chain/evm/async-util";
+import type { Stage, TokenBalance, TokenRef } from "@/lib/chain/types";
 
 const publicClient = createPublicClient({
   chain: ACTIVE_EVM_CHAIN,
@@ -23,23 +24,7 @@ function toHuman(raw: bigint, decimals: number): number {
   return Number(raw) / 10 ** decimals;
 }
 
-// RH testnet RPC is occasionally flaky — retry reads a couple times.
-async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
-  let last: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      last = e;
-      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
-    }
-  }
-  throw last;
-}
-
-export class EvmAdapter implements ChainAdapter {
-  readonly chain = "evm" as const;
-
+export class EvmAdapter {
   constructor(private wallet?: WalletClient) {}
 
   async getBalances(address: string): Promise<TokenBalance[]> {

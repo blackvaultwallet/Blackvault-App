@@ -15,7 +15,7 @@ import { SlideToStart } from "@/ui/slide-to-start";
 import { coinIcon, coinName } from "@/ui/evm-coins";
 import { USABLE_EVM_TOKENS, findEvmToken } from "@/lib/chain/evm/tokens";
 import { isEnsName, resolveEnsName } from "@/lib/chain/evm/ens";
-import { getEvmChainAdapter } from "@/lib/chain";
+import { getEvmAdapter } from "@/lib/chain/evm/adapter";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { appendJournal } from "@/lib/activity-journal";
 import { useToast } from "@/components/toast";
@@ -42,7 +42,7 @@ export function EvmSend({
 }: {
   open: boolean;
   onClose: () => void;
-  adapter: ReturnType<typeof getEvmChainAdapter>;
+  adapter: ReturnType<typeof getEvmAdapter>;
   balances: TokenBalance[];
   priceOf: (symbol: string) => number;
   onSent: () => void;

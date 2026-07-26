@@ -1,5 +1,4 @@
-// Chain-agnostic contract. UI and features depend on this, never on a chain
-// SDK directly, so Solana ↔ EVM swaps behind NEXT_PUBLIC_CHAIN.
+// Shared token/stage types for the EVM adapter and UI.
 
 export type Stage = (message: string) => void;
 
@@ -19,14 +18,3 @@ export interface TokenBalance {
   raw: bigint;
 }
 
-export interface ChainAdapter {
-  readonly chain: "evm" | "solana";
-  /** Native + known token balances for an address. */
-  getBalances(address: string): Promise<TokenBalance[]>;
-  /** Send a token (or native coin) to a destination; returns tx id/hash. */
-  send(token: TokenRef, to: string, amount: bigint, onStage?: Stage): Promise<string>;
-  explorerTxUrl(id: string): string;
-  explorerAddressUrl(address: string): string;
-  /** Optional name resolution (ENS / .sol). */
-  resolveName?(name: string): Promise<string>;
-}
