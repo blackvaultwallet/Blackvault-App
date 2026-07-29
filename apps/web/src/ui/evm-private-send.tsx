@@ -12,6 +12,7 @@ import { parseUnits } from "viem";
 import { NumPad } from "@/ui/num-pad";
 import { Button } from "@/ui/primitives";
 import { coinIcon, coinName } from "@/ui/evm-coins";
+import { NOTE_MAX, cleanNote } from "@/lib/note";
 import { TransferFlow, type TransferSummary } from "@/ui/transfer-flow";
 import { useToast } from "@/components/toast";
 import type { getEvmRail } from "@/lib/chain/evm/rail-evm";
@@ -53,12 +54,13 @@ export function EvmPrivateSend({
   priceOf: (symbol: string) => number;
   initialTo?: string;
   /** Reports what was sent so the caller can log it in the private feed. */
-  onSent: (symbol: string, amount: number) => void;
+  onSent: (symbol: string, amount: number, note?: string) => void;
 }) {
   const toast = useToast();
   const [to, setTo] = useState(initialTo ?? "");
   const [symbol, setSymbol] = useState("USDG");
   const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
   const [pickOpen, setPickOpen] = useState(false);
   const [flow, setFlow] = useState<{
     summary: TransferSummary;
@@ -202,6 +204,37 @@ export function EvmPrivateSend({
               </button>
             </div>
 
+            {/* optional memo — encrypted to the recipient's viewing key and
+                carried in the announcement metadata (see note-crypto.ts) */}
+            <p
+              className="mt-3 flex w-full items-center justify-center gap-1.5 text-[11px]"
+              style={{ color: "var(--text-faint)" }}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--brand)"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <rect x="4" y="11" width="16" height="10" rx="2.5" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+              Your message is encrypted and private
+            </p>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={NOTE_MAX}
+              placeholder="Add private note"
+              className="mt-1.5 w-full px-4 py-3 text-xs outline-none"
+              style={{ ...glass(), borderRadius: "var(--r-card)" }}
+            />
+
             <div className="mt-3 w-full">
               <NumPad onKey={onKey} decimal />
             </div>
@@ -278,8 +311,8 @@ export function EvmPrivateSend({
         summary={flow.summary}
         onConfirm={async (logLine) => {
           if (!rail) throw new Error("No wallet");
-          await rail.sendPrivate(flow.dest, flow.asset, flow.units, logLine);
-          onSent(symbol, flow.amt);
+          await rail.sendPrivate(flow.dest, flow.asset, flow.units, logLine, cleanNote(note));
+          onSent(symbol, flow.amt, cleanNote(note));
           return {};
         }}
         onClose={() => setFlow(null)}
@@ -287,6 +320,7 @@ export function EvmPrivateSend({
           setFlow(null);
           setTo("");
           setAmount("");
+          setNote("");
           onClose();
         }}
       />

@@ -25,19 +25,14 @@ export type TransferSummary = {
 
 type Stage = "confirm" | "processing" | "success" | "error";
 
-const KEYFRAMES = `
-@keyframes tf-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes tf-spin { to { transform: rotate(360deg); } }
-@keyframes tf-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
-@keyframes tf-pop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
-`;
+// tf-* keyframes live in theme.css — the public send sheet reuses these pieces.
 
 function usd(n?: number) {
   return n == null ? "" : `≈ $${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /* waiting clock: pulsing ring + a hand sweeping around */
-function ClockWait() {
+export function ClockWait() {
   return (
     <div className="relative flex h-24 w-24 items-center justify-center">
       <span
@@ -57,7 +52,7 @@ function ClockWait() {
 }
 
 /* success mark: circle + check that self-draw */
-function CheckMark() {
+export function CheckMark() {
   return (
     <div
       className="flex h-24 w-24 items-center justify-center rounded-full"
@@ -91,8 +86,9 @@ function lineColor(l: string): string {
   return "var(--text-dim)";
 }
 
-/* Linux-style terminal: window chrome + a log that types itself out. */
-function Terminal({ lines }: { lines: string[] }) {
+/* Linux-style terminal: window chrome + a log that types itself out.
+   `bodyClass` lets a bottom sheet run it shorter than the full-screen flow. */
+export function Terminal({ lines, bodyClass = "h-52" }: { lines: string[]; bodyClass?: string }) {
   const [shown, setShown] = useState(0);
   const [partial, setPartial] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -142,7 +138,7 @@ function Terminal({ lines }: { lines: string[] }) {
           vault@blackvault — transfer
         </span>
       </div>
-      <div ref={bodyRef} className="h-52 overflow-y-auto px-4 py-3 font-mono text-xs leading-6">
+      <div ref={bodyRef} className={`${bodyClass} overflow-y-auto px-4 py-3 font-mono text-xs leading-6`}>
         {lines.slice(0, shown).map((l, i) => (
           <div key={i} className="whitespace-pre-wrap break-words" style={{ color: lineColor(l) }}>
             {l}
@@ -235,7 +231,6 @@ export function TransferFlow({
 
   return (
     <div className="fixed inset-0 flex flex-col" style={{ zIndex: 60, background: "var(--surface-solid)", pointerEvents: "auto" }}>
-      <style>{KEYFRAMES}</style>
       <div
         className="flex min-h-0 flex-1 flex-col"
         style={{ animation: "tf-up 340ms var(--ease-out)", backgroundImage: "var(--bg-sheen)", backgroundRepeat: "no-repeat" }}

@@ -270,7 +270,9 @@ class EvmStealthRail implements PrivateRail {
     dest: string,
     asset: RailAsset,
     units: bigint,
-    onStage?: RailStage
+    onStage?: RailStage,
+    /** Optional message, encrypted to the recipient's viewing key. */
+    note?: string
   ): Promise<void> {
     const uri = dest.trim();
     if (!uri.startsWith("st:")) {
@@ -279,7 +281,7 @@ class EvmStealthRail implements PrivateRail {
     const token = findEvmToken(asset.symbol);
     if (!token) throw new Error(`Unknown asset ${asset.symbol}`);
     if (token.native) {
-      await sendStealthEth(this.wallet, uri, units, requireAnnouncer(), onStage);
+      await sendStealthEth(this.wallet, uri, units, requireAnnouncer(), onStage, note);
     } else {
       if (!token.address) throw new Error(`${token.symbol} not configured on this chain`);
       await sendStealthToken(
@@ -288,7 +290,8 @@ class EvmStealthRail implements PrivateRail {
         token.address as `0x${string}`,
         units,
         requireAnnouncer(),
-        onStage
+        onStage,
+        note
       );
     }
   }

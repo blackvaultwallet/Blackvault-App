@@ -64,6 +64,8 @@ interface Row {
   counterparty?: string;
   title?: string;
   jkind?: JournalKind;
+  /** Message from the sender, decrypted from the stealth announcement. */
+  note?: string;
 }
 
 // One getLogs per (direction, chunk) across ALL contracts (no address filter),
@@ -151,6 +153,7 @@ export function EvmActivity({
         dir: e.kind === "claim" ? "in" : "out",
         symbol: e.symbol,
         amount: e.amount,
+        note: e.note,
       }));
     const journal = readJournal(address).filter((e) => now - e.ts <= WINDOW_MS);
     const jHashes = new Set(journal.filter((e) => e.hash).map((e) => e.hash!.toLowerCase()));
@@ -321,13 +324,26 @@ function journalGlyph(k?: JournalKind): string {
   return "↑";
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+// `wrap` is for free text (notes) — addresses/hashes stay on one truncated line.
+function Row({
+  label,
+  value,
+  wrap,
+}: {
+  label: string;
+  value: React.ReactNode;
+  wrap?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="text-xs" style={{ color: "var(--text-dim)" }}>
         {label}
       </span>
-      <span className="max-w-[60%] truncate text-right font-mono text-xs">{value}</span>
+      <span
+        className={`max-w-[60%] text-right font-mono text-xs ${wrap ? "break-words" : "truncate"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -414,6 +430,7 @@ function TxDetailSheet({ row, onClose }: { row: Row | null; onClose: () => void 
                     minute: "2-digit",
                   })}
                 />
+                {row.note && <Row label="Note" value={row.note} wrap />}
                 {!priv_ && row.hash && <Row label="Tx" value={short(row.hash)} />}
                 {priv_ && <Row label="Visibility" value="This device only" />}
                 {jr && !row.hash && <Row label="Visibility" value="This device only" />}

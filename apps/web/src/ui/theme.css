@@ -319,6 +319,45 @@
   }
 }
 
+/* transfer flow: shared by the full-screen private flow and the public send
+   sheet, so they live here rather than being injected by one component */
+@keyframes tf-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes tf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tf-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes tf-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* marching dashes for the private-transfer path */
 .bv-dash {
   stroke-dasharray: 6 8;

@@ -32,8 +32,28 @@ import {
 } from "@scopelift/stealth-address-sdk";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
 import { withRetry } from "@/lib/chain/evm/async-util";
+import { decryptNote, encryptNote } from "@/lib/chain/evm/note-crypto";
 
 const SCHEME = VALID_SCHEME_ID.SCHEME_ID_1;
+
+/**
+ * Announcement metadata: the view tag, plus an encrypted note when the sender
+ * wrote one. A note must never cost someone their payment, so an encryption
+ * failure degrades to a plain view tag instead of throwing.
+ */
+async function buildMetadata(
+  viewTag: Hex,
+  recipientUri: string,
+  note?: string
+): Promise<Hex> {
+  if (!note) return viewTag;
+  try {
+    const suffix = await encryptNote(note, recipientUri);
+    return `${viewTag}${suffix.slice(2)}` as Hex;
+  } catch {
+    return viewTag;
+  }
+}
 
 // Fixed message → deterministic keys (must never change, or funds orphan).
 const KEY_MESSAGE =
@@ -80,6 +100,8 @@ export interface StealthIdentity {
 export interface StealthMatch {
   stealthAddress: Address;
   ephemeralPubKey: Hex;
+  /** Message the sender attached, decrypted with our viewing key. */
+  note?: string;
 }
 
 /** Derive the user's stealth identity from a Privy wallet signature. */
@@ -120,7 +142,8 @@ export async function sendStealthEth(
   recipientUri: string,
   amount: bigint,
   announcer: Address,
-  onStage?: (m: string) => void
+  onStage?: (m: string) => void,
+  note?: string
 ): Promise<{ transferTx: string; announceTx: string; stealthAddress: Address }> {
   if (!wallet.account) throw new Error("Wallet not connected");
   onStage?.("Computing one-time address…");
@@ -133,7 +156,8 @@ export async function sendStealthEth(
   // recipient needs to derive (and spend) the stealth address, so if it fails we
   // must not have already sent funds there — they'd be unrecoverable.
   onStage?.("Announcing on-chain…");
-  const metadata = viewTag as Hex; // first byte = view tag (ERC-5564 convention)
+  // First byte = view tag (ERC-5564 convention); an encrypted note may follow.
+  const metadata = await buildMetadata(viewTag as Hex, recipientUri, note);
   const announceTx = await wallet.writeContract({
     account: wallet.account,
     chain: ACTIVE_EVM_CHAIN,
@@ -190,10 +214,10 @@ async function getAnnounceLogs(announcer: Address, fromBlock: bigint, toBlock: b
 }
 
 /** Parse Announce logs and keep the ones addressed to these keys (unfiltered by balance). */
-function matchesForKeys(
+async function matchesForKeys(
   logs: Awaited<ReturnType<typeof publicClient.getLogs>>,
   keys: StealthKeys
-): StealthMatch[] {
+): Promise<StealthMatch[]> {
   const parsed = parseEventLogs({ abi: ERC5564AnnouncerAbi, logs });
   const matches: StealthMatch[] = [];
   for (const log of parsed) {
@@ -212,7 +236,14 @@ function matchesForKeys(
       viewingPrivateKey: keys.viewingPrivateKey,
       viewTag,
     });
-    if (mine) matches.push({ stealthAddress: a.stealthAddress, ephemeralPubKey: a.ephemeralPubKey });
+    if (!mine) continue;
+    // Only decrypt for announcements addressed to us — the viewing key that
+    // matched is the same one that opens the note.
+    matches.push({
+      stealthAddress: a.stealthAddress,
+      ephemeralPubKey: a.ephemeralPubKey,
+      note: await decryptNote(a.metadata, keys.viewingPrivateKey),
+    });
   }
   return matches;
 }
@@ -320,7 +351,8 @@ export async function sendStealthToken(
   token: Address,
   amount: bigint,
   announcer: Address,
-  onStage?: (m: string) => void
+  onStage?: (m: string) => void,
+  note?: string
 ): Promise<{ transferTx: string; announceTx: string; stealthAddress: Address }> {
   if (!wallet.account) throw new Error("Wallet not connected");
   onStage?.("Computing one-time address…");
@@ -332,7 +364,7 @@ export async function sendStealthToken(
   // Announce FIRST, then move the token — a failed announce after a completed
   // transfer would strand funds at an address whose key can't be re-derived.
   onStage?.("Announcing on-chain…");
-  const metadata = viewTag as Hex;
+  const metadata = await buildMetadata(viewTag as Hex, recipientUri, note);
   const announceTx = await wallet.writeContract({
     account: wallet.account,
     chain: ACTIVE_EVM_CHAIN,

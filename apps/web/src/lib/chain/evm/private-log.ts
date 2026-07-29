@@ -11,6 +11,9 @@ export interface PrivateLogEntry {
   symbol: string;
   amount: number;
   ts: number;
+  /** Optional memo the sender attached. Never leaves the device — a note on a
+   *  stealth transfer would defeat the point if it went on-chain. */
+  note?: string;
 }
 
 const KEY = (address: string) => `bv_evm_private_log_${address}`;

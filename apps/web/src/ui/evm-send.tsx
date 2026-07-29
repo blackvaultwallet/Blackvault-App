@@ -16,6 +16,8 @@ import { coinIcon, coinName } from "@/ui/evm-coins";
 import { USABLE_EVM_TOKENS, findEvmToken } from "@/lib/chain/evm/tokens";
 import { isEnsName, resolveEnsName } from "@/lib/chain/evm/ens";
 import { getEvmAdapter } from "@/lib/chain/evm/adapter";
+import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
+import { CheckMark, ClockWait, Terminal } from "@/ui/transfer-flow";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { appendJournal } from "@/lib/activity-journal";
 import { useToast } from "@/components/toast";
@@ -61,6 +63,10 @@ export function EvmSend({
   const [pickOpen, setPickOpen] = useState(false);
   // Consent gate: nothing signs from the form stage.
   const [review, setReview] = useState<{ dest: string; ensName?: string } | null>(null);
+  // After the slide: the sheet stays put and swaps to progress, then success —
+  // same language as the private flow, without taking over the screen.
+  const [lines, setLines] = useState<string[] | null>(null);
+  const [sent, setSent] = useState<{ hash: string; amount: string; symbol: string } | null>(null);
 
   // Asset menu is portalled out (backdrop-filter creates a stacking context
   // that would trap it under the keypad) — same pattern as the private sheet.
@@ -134,8 +140,16 @@ export function EvmSend({
     const t = findEvmToken(symbol);
     if (!t) return;
     setBusy(true);
+    const push = (l: string) => setLines((p) => [...(p ?? []), l]);
+    // Rail stages arrive unprefixed — tag them so the terminal colours them.
+    const log = (l: string) => push(/^[$>!✓✗#]/.test(l) ? l : `> ${l}`);
+    setLines([`$ vault send --amount ${amount} --asset ${symbol}`]);
+    log(`target ${review.ensName ?? shorten(review.dest)}`);
+    log(`network ${ACTIVE_EVM_CHAIN.name}`);
     try {
-      const hash = await adapter.send(t, review.dest, parseUnits(amount, t.decimals));
+      const hash = await adapter.send(t, review.dest, parseUnits(amount, t.decimals), log);
+      log("awaiting confirmations");
+      push("✓ transfer confirmed on-chain");
       if (address) {
         appendJournal(address, {
           kind: origin === "qr" ? "send-qr" : origin === "request" ? "send-request" : "send",
@@ -152,28 +166,40 @@ export function EvmSend({
           detail: review.ensName ?? review.dest,
         });
       }
-      toast("success", `Sent ${amount} ${symbol}`);
-      setTo("");
-      setAmount("");
-      setReview(null);
+      setSent({ hash, amount, symbol });
       onSent();
-      onClose();
     } catch (e) {
+      push(`! ${(e as Error).message}`);
+      push("✗ transfer aborted");
       toast("error", (e as Error).message);
+      setLines(null);
       setReview(null);
     } finally {
       setBusy(false);
     }
   }
 
+  // Wipe every stage so the next open starts on a clean form.
+  function finish() {
+    setTo("");
+    setAmount("");
+    setReview(null);
+    setLines(null);
+    setSent(null);
+    onClose();
+  }
+
   return (
     <Drawer.Root
       open={open}
+      // Never let a swipe dismiss the sheet mid-send — the tx is already in
+      // flight and the user would lose sight of it.
+      dismissible={!busy}
       onOpenChange={(o) => {
-        if (!o) {
-          setReview(null);
-          onClose();
-        }
+        if (o || busy) return;
+        if (sent) return finish();
+        setReview(null);
+        onClose();
       }}
     >
       <Drawer.Portal>
@@ -193,9 +219,55 @@ export function EvmSend({
               className="mb-4 h-1 w-10"
               style={{ background: "var(--border-strong)", borderRadius: "var(--r-pill)" }}
             />
-            <h3 className="self-start text-base font-semibold">{review ? "Confirm send" : "Send"}</h3>
+            <h3 className="self-start text-base font-semibold">
+              {sent
+                ? "Transfer Complete"
+                : lines
+                  ? "Sending"
+                  : review
+                    ? "Confirm send"
+                    : "Send"}
+            </h3>
 
-            {review ? (
+            {sent ? (
+              /* ---------- SUCCESS ---------- */
+              <div className="flex w-full flex-col items-center pt-4">
+                <CheckMark />
+                <p className="mt-4 font-mono text-2xl font-semibold tabular-nums">
+                  {sent.amount} <span style={{ color: "var(--text-dim)" }}>{sent.symbol}</span>
+                </p>
+                <p className="mt-1 text-sm" style={{ color: "var(--text-dim)" }}>
+                  Sent · {ACTIVE_EVM_CHAIN.name}
+                </p>
+                <a
+                  href={adapter.explorerTxUrl(sent.hash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bv-press mt-5 h-11 w-full text-center text-sm font-medium leading-[2.75rem]"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--r-pill)",
+                    color: "var(--text)",
+                  }}
+                >
+                  View on explorer ↗
+                </a>
+                <Button onClick={finish} className="mt-2 h-12 w-full">
+                  Done
+                </Button>
+              </div>
+            ) : lines ? (
+              /* ---------- PROCESSING ---------- */
+              <div className="flex w-full flex-col items-center pt-2">
+                <ClockWait />
+                <p className="mt-2 text-sm font-semibold">Processing transfer</p>
+                <p className="mb-2 text-xs" style={{ color: "var(--text-dim)" }}>
+                  Sending {amount} {symbol} · don&apos;t close the app
+                </p>
+                <Terminal lines={lines} bodyClass="h-40" />
+              </div>
+            ) : review ? (
               <>
                 <div
                   className="mt-3 flex w-full flex-col gap-2.5 p-4 text-sm"

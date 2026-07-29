@@ -29,6 +29,8 @@ import { useToast } from "@/components/toast";
 interface FundedNoteRaw {
   token: TokenRef;
   amount: bigint;
+  /** Stealth match — carries the sender's encrypted message once decrypted. */
+  match?: { note?: string };
 }
 
 const FEED_COPY = {
@@ -221,6 +223,7 @@ export function EvmPrivate({
           kind: "claim",
           symbol: n.token.symbol,
           amount: Number(formatUnits(n.amount, n.token.decimals)),
+          note: n.match?.note,
         });
       }
       setLog(next);
@@ -285,8 +288,8 @@ export function EvmPrivate({
         assets={rail?.privateAssets ?? []}
         spendBalances={publicBalances}
         priceOf={priceOf}
-        onSent={(symbol, amount) => {
-          if (address) setLog(appendPrivateLog(address, { kind: "send", symbol, amount }));
+        onSent={(symbol, amount, note) => {
+          if (address) setLog(appendPrivateLog(address, { kind: "send", symbol, amount, note }));
           onPublicBalanceChange?.();
         }}
       />
