@@ -1,7 +1,7 @@
 "use client";
 
-// EVM-only providers. The Solana Privy config lives in ../blackvault-sol's
-// history — the app ships with NEXT_PUBLIC_CHAIN=robinhood.
+// EVM-only providers. The Solana Privy config was archived when the app went
+// EVM-only; testnet vs mainnet is picked by NEXT_PUBLIC_EVM_NETWORK.
 
 import { PrivyProvider } from "@privy-io/react-auth";
 import { ToastProvider } from "@/components/toast";

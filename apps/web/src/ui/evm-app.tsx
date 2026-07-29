@@ -1,8 +1,7 @@
 "use client";
 
-// Authenticated EVM app (Robinhood Chain). Rendered instead of the Solana
-// shell when NEXT_PUBLIC_CHAIN=robinhood. Tabbed shell (Home/Vault/AI/Activity/
-// Settings) mirroring the Solana app, with EVM data. Send via a bottom sheet.
+// Authenticated EVM app (Robinhood Chain). Tabbed shell — Home / Vault / AI /
+// Activity / Settings — with send flows in bottom sheets.
 
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "@/lib/chain/use-wallet";
