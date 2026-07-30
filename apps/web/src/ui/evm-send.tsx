@@ -4,7 +4,7 @@
 // pill, amount card with the in-app keypad, network chips (RH live, others
 // Soon). Review + slide-to-confirm consent gate before anything signs.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Drawer } from "vaul";
 import { parseUnits } from "viem";
@@ -62,7 +62,10 @@ export function EvmSend({
   const [to, setTo] = useState(initialTo ?? "");
   // Selection is keyed by address, not symbol: this list can contain two
   // different tokens calling themselves the same thing.
-  const tokens = useMemo(() => tokensFor(address), [address]);
+  // Read every render, deliberately not memoised: this sheet mounts once and
+  // lives for the whole session, so anything cached here would miss a token
+  // added in between. It's a localStorage read — cheaper than the staleness.
+  const tokens = tokensFor(address);
   // A pay link carries a symbol for built-ins and an address for user-added
   // tokens — match either, but never fall back to a same-symbol impostor.
   const matchLink = (list: TokenRef[], want: string) =>

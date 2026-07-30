@@ -5,7 +5,7 @@
 // link + QR pointing at your stealth meta-address, so the payer sends privately
 // and you stay unlinked. Pick amount + token + note.
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { QRCodeSVG } from "qrcode.react";
 import { tokensFor } from "@/lib/chain/evm/custom-tokens";
@@ -28,7 +28,9 @@ export function EvmPaymentRequest({
 }) {
   const toast = useToast();
   const { address } = useWallet();
-  const tokens = useMemo(() => tokensFor(address), [address]);
+  // Not memoised, same reason as the send sheet: it outlives any token added
+  // while it sits mounted, and a cached list would silently miss it.
+  const tokens = tokensFor(address);
   const [sel, setSel] = useState("USDG");
   const token = tokens.find((t) => tokenKey(t) === sel || t.symbol === sel) ?? tokens[0]!;
   const symbol = token.symbol;
