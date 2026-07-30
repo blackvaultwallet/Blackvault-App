@@ -3,7 +3,7 @@
 // Authenticated EVM app (Robinhood Chain). Tabbed shell — Home / Vault / AI /
 // Activity / Settings — with send flows in bottom sheets.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { useEvmWallet } from "@/lib/chain/evm/wallet";
 import { getEvmAdapter } from "@/lib/chain/evm/adapter";
@@ -20,6 +20,7 @@ import { EvmNews } from "@/ui/evm-news";
 import { EvmSettings } from "@/ui/evm-settings";
 import { EvmSend } from "@/ui/evm-send";
 import { EvmReceive } from "@/ui/evm-receive";
+import { EvmAddToken } from "@/ui/evm-add-token";
 import { ComingSoonSheet } from "@/ui/coming-soon-sheet";
 import { EvmDegen } from "@/ui/evm-degen";
 import { CardShowcase } from "@/ui/card-showcase";
@@ -156,6 +157,9 @@ export function EvmApp() {
   const change = (sym: string) => quotes?.[sym]?.change24h ?? 0;
 
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [addTokenOpen, setAddTokenOpen] = useState(false);
+  // The deck selection lives in localStorage; this just tells the card to re-read.
+  const [cardsVersion, setCardsVersion] = useState(0);
 
   if (locked) return <AppLock onUnlock={() => setLocked(false)} />;
 
@@ -195,6 +199,8 @@ export function EvmApp() {
                   balances={balances}
                   priceOf={price}
                   changeOf={change}
+                  owner={address}
+                  cardsVersion={cardsVersion}
                   onAction={(a) => {
                     if (a === "Send") setSendOpen(true);
                     else if (a === "Receive") setReceiveOpen(true);
@@ -231,8 +237,19 @@ export function EvmApp() {
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-base font-semibold">Your Assets</h2>
-                  <button onClick={refresh} className="bv-press bv-btn-ghost px-3 py-1 text-xs">
-                    {loading ? "…" : "Refresh"}
+                  <button
+                    onClick={() => setAddTokenOpen(true)}
+                    className="bv-press bv-btn-ghost flex items-center gap-1.5 px-3 py-1 text-xs"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <path
+                        d="M6 1.5v9M1.5 6h9"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    {loading ? "…" : "Add token"}
                   </button>
                 </div>
                 {balErr && (
@@ -240,7 +257,11 @@ export function EvmApp() {
                     read error: {balErr}
                   </p>
                 )}
-                <EvmMarkets />
+                <EvmMarkets
+                  owner={address}
+                  balances={balances}
+                  onCardsChange={() => setCardsVersion((v) => v + 1)}
+                />
               </div>
             </div>
           )}
@@ -290,6 +311,13 @@ export function EvmApp() {
       />
 
       <EvmReceive open={receiveOpen} onClose={() => setReceiveOpen(false)} address={address} />
+
+      <EvmAddToken
+        open={addTokenOpen}
+        owner={address}
+        onClose={() => setAddTokenOpen(false)}
+        onAdded={refresh}
+      />
 
       {/* Activity — reachable from the bell */}
       {activityOpen && (

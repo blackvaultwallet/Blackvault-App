@@ -11,7 +11,8 @@ import {
   type Address,
 } from "viem";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
-import { EVM_TOKENS } from "@/lib/chain/evm/tokens";
+import { ETH } from "@/lib/chain/evm/tokens";
+import { tokensFor } from "@/lib/chain/evm/custom-tokens";
 import { withRetry } from "@/lib/chain/evm/async-util";
 import type { Stage, TokenBalance, TokenRef } from "@/lib/chain/types";
 
@@ -33,29 +34,36 @@ export class EvmAdapter {
 
     // Native balance: retried, and errors propagate (a flaky read must not
     // silently show 0).
-    const nativeToken = EVM_TOKENS.find((t) => t.native)!;
     const nativeRaw = await withRetry(() =>
       publicClient.getBalance({ address: owner })
     );
     out.push({
-      token: nativeToken,
+      token: ETH,
       raw: nativeRaw,
-      amount: toHuman(nativeRaw, nativeToken.decimals),
+      amount: toHuman(nativeRaw, ETH.decimals),
     });
 
-    // ERC-20s: skip individually if the token isn't deployed on this network.
-    for (const token of EVM_TOKENS) {
+    // Curated allowlist + whatever this wallet added by hand. Skip individually
+    // if the token isn't deployed on this network.
+    for (const token of tokensFor(address)) {
       if (token.native || !token.address) continue;
       try {
-        const raw = await publicClient.readContract({
-          address: getAddress(token.address),
-          abi: erc20Abi,
-          functionName: "balanceOf",
-          args: [owner],
-        });
+        // Retried: the mainnet Blockscout endpoint drops calls intermittently,
+        // and without this a held token just vanishes from the list. Kept short
+        // so a token that genuinely isn't deployed still fails quickly.
+        const raw = await withRetry(
+          () =>
+            publicClient.readContract({
+              address: getAddress(token.address!),
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [owner],
+            }),
+          3
+        );
         out.push({ token, raw, amount: toHuman(raw, token.decimals) });
       } catch {
-        // token unavailable — skip
+        // token unavailable on this network — skip
       }
     }
     return out;

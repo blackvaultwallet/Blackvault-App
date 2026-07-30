@@ -8,6 +8,7 @@ const NAMES: Record<string, string> = {
   USDG: "Global Dollar",
   USDC: "USD Coin",
   USDT: "Tether",
+  VAULT: "BlackVault",
   BV: "BlackVault",
   ARB: "Arbitrum",
   OP: "Optimism",
@@ -57,7 +58,7 @@ function chainBadge(iconSize: number): React.ReactNode {
  *  Carries a small RH marker so it's clear the asset lives on Robinhood Chain. */
 export function coinIcon(symbol: string, size = 24): React.ReactNode {
   const usdg = symbol === "USDG";
-  const bv = symbol === "BV";
+  const bv = symbol === "BV" || symbol === "VAULT";
   return (
     <span className="relative inline-flex" style={{ width: size, height: size }}>
       <span

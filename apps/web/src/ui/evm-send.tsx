@@ -4,7 +4,7 @@
 // pill, amount card with the in-app keypad, network chips (RH live, others
 // Soon). Review + slide-to-confirm consent gate before anything signs.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Drawer } from "vaul";
 import { parseUnits } from "viem";
@@ -13,7 +13,10 @@ import { Button } from "@/ui/primitives";
 import { ChainSelect } from "@/ui/chain-select";
 import { SlideToStart } from "@/ui/slide-to-start";
 import { coinIcon, coinName } from "@/ui/evm-coins";
-import { USABLE_EVM_TOKENS, findEvmToken } from "@/lib/chain/evm/tokens";
+import { findEvmToken } from "@/lib/chain/evm/tokens";
+import { tokensFor } from "@/lib/chain/evm/custom-tokens";
+import { tokenKey } from "@/lib/chain/evm/card-watchlist";
+import type { TokenRef } from "@/lib/chain/types";
 import { isEnsName, resolveEnsName } from "@/lib/chain/evm/ens";
 import { getEvmAdapter } from "@/lib/chain/evm/adapter";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
@@ -57,7 +60,20 @@ export function EvmSend({
   const toast = useToast();
   const { address } = useWallet();
   const [to, setTo] = useState(initialTo ?? "");
-  const [symbol, setSymbol] = useState(initialToken ?? "ETH");
+  // Selection is keyed by address, not symbol: this list can contain two
+  // different tokens calling themselves the same thing.
+  const tokens = useMemo(() => tokensFor(address), [address]);
+  // A pay link carries a symbol for built-ins and an address for user-added
+  // tokens — match either, but never fall back to a same-symbol impostor.
+  const matchLink = (list: TokenRef[], want: string) =>
+    list.find((t) => tokenKey(t).toLowerCase() === want.toLowerCase()) ??
+    (want.startsWith("0x") ? undefined : findEvmToken(want));
+  const [sel, setSel] = useState(() => {
+    const t = initialToken ? matchLink(tokens, initialToken) : undefined;
+    return t ? tokenKey(t) : "ETH";
+  });
+  const token = tokens.find((t) => tokenKey(t) === sel) ?? tokens[0]!;
+  const symbol = token.symbol;
   const [amount, setAmount] = useState(initialAmount ?? "");
   const [busy, setBusy] = useState(false);
   const [pickOpen, setPickOpen] = useState(false);
@@ -72,6 +88,16 @@ export function EvmSend({
   // that would trap it under the keypad) — same pattern as the private sheet.
   const btnRef = useRef<HTMLButtonElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
+
+  // A request can name a token this wallet hasn't added. Say so rather than
+  // silently swapping in ETH and letting them pay the wrong thing.
+  useEffect(() => {
+    if (!open || !initialToken) return;
+    if (!matchLink(tokens, initialToken)) {
+      toast("error", "This request is for a token you haven't added yet");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialToken]);
 
   useEffect(() => {
     if (!pickOpen) return;
@@ -89,7 +115,7 @@ export function EvmSend({
     setPickOpen((o) => !o);
   }
 
-  const available = balances.find((b) => b.token.symbol === symbol)?.amount ?? 0;
+  const available = balances.find((b) => tokenKey(b.token) === sel)?.amount ?? 0;
   const usd = (parseFloat(amount) || 0) * priceOf(symbol);
 
   function onKey(k: string) {
@@ -100,8 +126,7 @@ export function EvmSend({
 
   async function toReview() {
     if (busy) return;
-    const t = findEvmToken(symbol);
-    if (!t) return;
+    const t = token;
     const raw = to.trim();
     if (!raw) return toast("error", "Enter a destination");
     if (raw.startsWith("st:")) {
@@ -137,8 +162,7 @@ export function EvmSend({
 
   async function send() {
     if (busy || !review) return;
-    const t = findEvmToken(symbol);
-    if (!t) return;
+    const t = token;
     setBusy(true);
     const push = (l: string) => setLines((p) => [...(p ?? []), l]);
     // Rail stages arrive unprefixed — tag them so the terminal colours them.
@@ -379,11 +403,11 @@ export function EvmSend({
                     boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
                   }}
                 >
-                  {USABLE_EVM_TOKENS.map((t) => (
+                  {tokens.map((t) => (
                     <button
-                      key={t.symbol}
+                      key={tokenKey(t)}
                       onClick={() => {
-                        setSymbol(t.symbol);
+                        setSel(tokenKey(t));
                         setAmount("");
                         setPickOpen(false);
                       }}
@@ -393,7 +417,7 @@ export function EvmSend({
                         {coinIcon(t.symbol, 26)}
                         <span
                           className="text-sm"
-                          style={{ color: t.symbol === symbol ? "var(--brand)" : "var(--text)" }}
+                          style={{ color: tokenKey(t) === sel ? "var(--brand)" : "var(--text)" }}
                         >
                           {coinName(t.symbol)}
                         </span>

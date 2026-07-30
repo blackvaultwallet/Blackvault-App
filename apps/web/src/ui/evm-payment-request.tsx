@@ -5,10 +5,11 @@
 // link + QR pointing at your stealth meta-address, so the payer sends privately
 // and you stay unlinked. Pick amount + token + note.
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { QRCodeSVG } from "qrcode.react";
-import { USABLE_EVM_TOKENS } from "@/lib/chain/evm/tokens";
+import { tokensFor } from "@/lib/chain/evm/custom-tokens";
+import { tokenKey } from "@/lib/chain/evm/card-watchlist";
 import { buildEvmPayLink } from "@/lib/chain/evm/pay-link";
 import { useWallet } from "@/lib/chain/use-wallet";
 import { appendJournal } from "@/lib/activity-journal";
@@ -27,7 +28,10 @@ export function EvmPaymentRequest({
 }) {
   const toast = useToast();
   const { address } = useWallet();
-  const [symbol, setSymbol] = useState("USDG");
+  const tokens = useMemo(() => tokensFor(address), [address]);
+  const [sel, setSel] = useState("USDG");
+  const token = tokens.find((t) => tokenKey(t) === sel || t.symbol === sel) ?? tokens[0]!;
+  const symbol = token.symbol;
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   // Journal once per sheet open (sharing the link = the request going out).
@@ -35,8 +39,12 @@ export function EvmPaymentRequest({
 
   const n = parseFloat(amount);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // Built-ins travel as a symbol so links stay readable and old ones keep
+  // working; a user-added token has to travel as its address, since its symbol
+  // means nothing to whoever opens the link.
+  const linkToken = (token as { custom?: boolean }).custom ? token.address! : symbol;
   const link = metaUri
-    ? buildEvmPayLink(origin, { to: metaUri, amount: n > 0 ? n : undefined, token: symbol, note })
+    ? buildEvmPayLink(origin, { to: metaUri, amount: n > 0 ? n : undefined, token: linkToken, note })
     : "";
 
   async function copy() {
@@ -95,12 +103,12 @@ export function EvmPaymentRequest({
 
             {/* token row */}
             <div className="mt-4 flex flex-wrap gap-2">
-              {USABLE_EVM_TOKENS.map((t) => {
-                const active = symbol === t.symbol;
+              {tokens.map((t) => {
+                const active = tokenKey(t) === tokenKey(token);
                 return (
                   <button
-                    key={t.symbol}
-                    onClick={() => setSymbol(t.symbol)}
+                    key={tokenKey(t)}
+                    onClick={() => setSel(tokenKey(t))}
                     className="bv-press flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
                     style={{
                       background: active ? "var(--brand-soft)" : "var(--surface-2)",

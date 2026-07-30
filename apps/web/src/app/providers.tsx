@@ -6,6 +6,7 @@
 import { PrivyProvider } from "@privy-io/react-auth";
 import { ToastProvider } from "@/components/toast";
 import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
+import { FUNDING_ORIGINS } from "@/lib/chain/evm/funding";
 
 const evmConfig = {
   loginMethods: ["google", "email", "wallet"] as const,
@@ -22,7 +23,9 @@ const evmConfig = {
     ethereum: { createOnLogin: "all-users" as const },
   },
   defaultChain: ACTIVE_EVM_CHAIN,
-  supportedChains: [ACTIVE_EVM_CHAIN],
+  // The deposit origins have to be listed here or Privy rejects the
+  // switchChain the Relay flow needs. Robinhood Chain stays the default.
+  supportedChains: [ACTIVE_EVM_CHAIN, ...FUNDING_ORIGINS.map((o) => o.chain)],
 };
 
 export function Providers({ children }: { children: React.ReactNode }) {

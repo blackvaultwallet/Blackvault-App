@@ -1,11 +1,12 @@
 "use client";
 
 // Portfolio deck (reference style): the front card is the total portfolio value
-// (+ 24h change + quick actions); behind it sit the assets you actually hold,
-// each showing its own value, tucked under but still readable. Swipe the front
-// card up to roll the next card forward.
+// (+ 24h change + quick actions); behind it sit the assets the user pinned from
+// the assets list, each showing its own value. Swipe the front card up to roll
+// the next card forward.
 
 import { useEffect, useRef, useState } from "react";
+import { readCards, tokenKey } from "@/lib/chain/evm/card-watchlist";
 import { EthIcon, UsdcIcon, UsdtIcon } from "@/ui/icons";
 import type { TokenBalance } from "@/lib/chain/types";
 
@@ -59,6 +60,15 @@ function PortfolioSpark({ ethBalance, stableTotal, hidden }: { ethBalance: numbe
 type Visual = { name: string; icon: React.ReactNode; iconBg: string; card: string; tint: string };
 
 const VISUALS: Record<string, Visual> = {
+  // Our own token leads the deck; it ships on mainnet only, so on testnet it
+  // simply has no balance entry and no card.
+  VAULT: {
+    name: "BlackVault",
+    icon: <span style={{ color: "var(--cta-text)", fontWeight: 800, fontSize: 13, lineHeight: 1 }}>V</span>,
+    iconBg: "var(--brand-gradient)",
+    card: "linear-gradient(160deg, rgba(216,180,94,0.42), rgba(216,180,94,0.08) 50%, transparent 75%), var(--surface-solid)",
+    tint: "linear-gradient(90deg, rgba(216,180,94,0.45), transparent 70%), var(--surface-solid)",
+  },
   ETH: {
     name: "Ethereum",
     icon: <EthIcon size={18} />,
@@ -94,16 +104,8 @@ const TOTAL_CARD =
 const TOTAL_TINT =
   "linear-gradient(90deg, rgba(216,180,94,0.24), transparent 70%), var(--surface-solid)";
 
-// BlackVault's own token — teased in the deck until it ships.
-const BV_VISUAL: Visual = {
-  name: "BlackVault",
-  icon: <span style={{ color: "var(--cta-text)", fontWeight: 800, fontSize: 13, lineHeight: 1 }}>V</span>,
-  iconBg: "var(--brand-gradient)",
-  card: "linear-gradient(160deg, rgba(216,180,94,0.42), rgba(216,180,94,0.08) 50%, transparent 75%), var(--surface-solid)",
-  tint: "linear-gradient(90deg, rgba(216,180,94,0.45), transparent 70%), var(--surface-solid)",
-};
-
 const ACTIONS = ["Send", "Receive", "NFC", "Card"] as const;
+
 const NfcIcon = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
     <path d="M9 8.5a5 5 0 0 1 0 7" />
@@ -148,23 +150,39 @@ function EyeOff() {
   );
 }
 
-type Card =
-  | { kind: "total" }
-  | { kind: "asset"; b: TokenBalance; v: Visual }
-  | { kind: "soon"; v: Visual };
+/** Neutral card styling for a user-added token — no brand to draw on. */
+const CUSTOM_VISUAL = (symbol: string): Visual => ({
+  name: symbol,
+  icon: (
+    <span style={{ color: "var(--cta-text)", fontWeight: 800, fontSize: 13, lineHeight: 1 }}>
+      {symbol.slice(0, 1).toUpperCase()}
+    </span>
+  ),
+  iconBg: "var(--surface-2)",
+  card: "linear-gradient(160deg, rgba(255,255,255,0.14), transparent 60%), var(--surface-solid)",
+  tint: "linear-gradient(90deg, rgba(255,255,255,0.16), transparent 70%), var(--surface-solid)",
+});
+
+type Card = { kind: "total" } | { kind: "asset"; b: TokenBalance; v: Visual };
 
 export function EvmPortfolioCard({
   balances,
   priceOf,
   changeOf,
   onAction,
+  owner,
+  cardsVersion,
 }: {
   balances: TokenBalance[];
   priceOf: (symbol: string) => number;
   /** 24h price change % for a symbol (0 if unknown). */
   changeOf: (symbol: string) => number;
   onAction: (action: (typeof ACTIONS)[number]) => void;
+  owner?: string | null;
+  /** Bumped by the assets list when the deck selection changes. */
+  cardsVersion?: number;
 }) {
+  void cardsVersion; // re-render trigger only; the list itself is read below
   // Total now, and 24h ago derived from each asset's own change — so the delta
   // is the real portfolio move, not one coin's.
   let total = 0;
@@ -179,18 +197,21 @@ export function EvmPortfolioCard({
   const deltaPct = prev ? (deltaUsd / prev) * 100 : 0;
   const up = deltaUsd >= 0;
 
-  // ETH always gets a card (even at zero) so the deck never feels empty;
-  // other assets appear once held.
-  const held = balances
-    .filter((b) => (b.amount > 0 || b.token.symbol === "ETH") && VISUALS[b.token.symbol])
-    .sort((a, b) => b.amount * priceOf(b.token.symbol) - a.amount * priceOf(a.token.symbol));
+  // The deck is the user's pick, not a derivation of what they hold — see
+  // card-watchlist. Order follows the saved list so a card stays put.
+  const keys = owner ? readCards(owner, balances.map((b) => b.token)) : [];
+  const held = keys
+    .map((k) => balances.find((b) => tokenKey(b.token) === k))
+    .filter((b): b is TokenBalance => !!b);
 
-  // Front card is always the total; the assets you hold sit behind it, and the
-  // BlackVault token teaser closes the deck.
+  // Front card is always the total; the chosen assets sit behind it.
   const cards: Card[] = [
     { kind: "total" },
-    ...held.map((b) => ({ kind: "asset" as const, b, v: VISUALS[b.token.symbol] })),
-    { kind: "soon", v: BV_VISUAL },
+    ...held.map((b) => ({
+      kind: "asset" as const,
+      b,
+      v: VISUALS[b.token.symbol] ?? CUSTOM_VISUAL(b.token.symbol),
+    })),
   ];
   const n = cards.length;
 
@@ -321,9 +342,7 @@ export function EvmPortfolioCard({
         <div className="mt-2 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="font-mono text-4xl font-semibold tabular-nums">
-              {front.kind === "soon" ? (
-                <span style={{ color: "var(--brand)" }}>Soon</span>
-              ) : hidden ? (
+              {hidden ? (
                 "•••••"
               ) : (
                 <>
@@ -333,11 +352,7 @@ export function EvmPortfolioCard({
               )}
             </p>
 
-            {front.kind === "soon" ? (
-              <p className="mt-1.5 text-sm" style={{ color: "var(--text-dim)" }}>
-                Our native token — coming soon
-              </p>
-            ) : front.kind === "total" ? (
+            {front.kind === "total" ? (
               <p
                 className="mt-1.5 text-xs"
                 style={{ color: hidden ? "var(--text-faint)" : up ? "var(--positive)" : "var(--negative)" }}
@@ -391,12 +406,11 @@ export function EvmPortfolioCard({
       {[1, 2].slice(0, Math.max(0, n - 1)).map((offset, i) => {
         const c = at(offset);
         const label = c.kind === "total" ? "Portfolio" : c.v.name;
-        const value =
-          c.kind === "total" ? total : c.kind === "asset" ? c.b.amount * priceOf(c.b.token.symbol) : 0;
+        const value = c.kind === "total" ? total : c.b.amount * priceOf(c.b.token.symbol);
         const [uInt, uFrac] = usdParts(value);
         return (
           <div
-            key={c.kind === "total" ? "total" : c.kind === "asset" ? c.b.token.symbol : "bv-soon"}
+            key={c.kind === "total" ? "total" : c.b.token.symbol}
             className="relative flex items-center justify-between px-4 pb-3 pt-6"
             style={{
               marginTop: -16,
@@ -424,9 +438,7 @@ export function EvmPortfolioCard({
               {label}
             </span>
             <span className="font-mono text-sm tabular-nums">
-              {c.kind === "soon" ? (
-                <span style={{ color: "var(--brand)" }}>Soon</span>
-              ) : hidden ? (
+              {hidden ? (
                 "•••••"
               ) : (
                 <>
