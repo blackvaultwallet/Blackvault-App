@@ -25,6 +25,15 @@ import {
   executeFunding,
   getPayoutQuote,
 } from "@/lib/chain/evm/funding";
+import {
+  DEPOSIT_FEE_RATE,
+  FUNDING_RATE,
+  ISSUANCE_FEE,
+  MIN_FUNDABLE,
+  PROCESSING_FEE,
+  depositToFund,
+  depositToOpen,
+} from "@/lib/cards/pricing";
 import { useToast } from "@/components/toast";
 import { coinIcon } from "@/ui/evm-coins";
 import { BaseIcon, EthIcon, OptimismIcon, RhChainIcon } from "@/ui/icons";
@@ -80,9 +89,9 @@ const BIN = "441357";
  * and out of our own pocket. If that ever stops happening the label is a lie,
  * and it is the first thing that has to change.
  */
-const ISSUANCE_FEE = 5;
-const PROCESSING_FEE = 1;
-const FUNDING_RATE = 0.04;
+// Rates and helpers live in lib/cards/pricing — the screen quotes them and the
+// route enforces them, and the two disagreeing is how someone pays one number
+// and is charged another.
 
 /**
  * Balance the card is opened with.
@@ -93,13 +102,6 @@ const FUNDING_RATE = 0.04;
  * figure on their dashboard is the top-up minimum, not this one.
  */
 const OPEN_AMOUNT = 10;
-
-/**
- * Smallest top-up. Confirmed with their team: $10 to open, $1 after, on US
- * cards — which is the BIN we issue on. The $1 + 4% fee makes small top-ups
- * poor value, so the presets start higher even though the floor allows it.
- */
-const MIN_TOPUP = 1;
 
 /** Quick picks for the opening balance. The floor is first so the cheapest
  *  option is the default one your thumb lands on. */
@@ -1018,7 +1020,9 @@ function CardItem({
       setDepStage("Opening a deposit…");
       const { deposit: d } = await api<{ deposit: { id: string; pay_address: string; pay_amount: string } }>(
         "/api/cards",
-        { action: "deposit", amount: depNum, forCardId: row.cardId }
+        // The amount to land on the card — the server prices the deposit that
+        // pays for it, fees and their inbound cut included.
+        { action: "deposit", fundAmount: depNum, forCardId: row.cardId }
       );
 
       setDepStage("Pricing the route…");
@@ -1112,10 +1116,14 @@ function CardItem({
   // is charged once, when the card is opened. Nothing is owed until an amount
   // is typed: the processing fee used to show through on an empty field, which
   // read as a charge for doing nothing.
+  // The floor is the payment rail's, not the card's: the provider takes $1
+  // top-ups but won't take a deposit small enough to pay for one.
   const depNum = Number(depAmount);
-  const depValid = Number.isFinite(depNum) && depNum >= MIN_TOPUP;
+  const depValid = Number.isFinite(depNum) && depNum >= MIN_FUNDABLE;
   const depFunding = depValid ? depNum * FUNDING_RATE : 0;
   const depFee = !depValid || tier.id === "platinum" ? 0 : depFunding + PROCESSING_FEE;
+  // What actually leaves the wallet, so the card receives the figure typed.
+  const depTotal = depValid ? depositToFund(depNum) : 0;
 
   // The history is the content of this screen, so it loads on view rather than
   // waiting behind a tap. One call per card, guarded so re-renders don't repeat
@@ -1291,13 +1299,13 @@ function CardItem({
 
       <Sheet open={depositing} onClose={() => setDepositing(false)} title="Add funds">
         <Field
-          label={`Amount (USD · min $${MIN_TOPUP})`}
+          label={`Amount (USD · min $${MIN_FUNDABLE.toFixed(2)})`}
           value={depAmount}
           onChange={setDepAmount}
-          placeholder={String(MIN_TOPUP)}
+          placeholder={MIN_FUNDABLE.toFixed(2)}
         />
         <div className="flex flex-wrap gap-2">
-          {TOPUP_PRESETS.map((p) => {
+          {TOPUP_PRESETS.filter((p) => p >= MIN_FUNDABLE).map((p) => {
             const on = depNum === p;
             return (
               <button
@@ -1327,6 +1335,13 @@ function CardItem({
             value={usd(depValid ? PROCESSING_FEE : 0)}
             struck={tier.id === "platinum"}
           />
+          {/* Taken on the way in, before any of the above. Shown because the
+              total has to add up — it was missing, and the screen quoted a
+              figure a percent below what actually left the wallet. */}
+          <FeeRow
+            label={`Deposit fee (${DEPOSIT_FEE_RATE * 100}%)`}
+            value={usd(depValid ? depTotal - depNum - depFee : 0)}
+          />
           {tier.id === "platinum" && (
             <div className="flex items-center justify-between text-xs">
               <span style={{ color: "var(--text-faint)" }}>Platinum</span>
@@ -1338,10 +1353,13 @@ function CardItem({
             style={{ borderTop: "1px solid var(--border)" }}
           >
             <span>Total</span>
-            <span className="font-mono tabular-nums">
-              {usd((depValid ? depNum : 0) + depFee)}
-            </span>
+            <span className="font-mono tabular-nums">{usd(depTotal)}</span>
           </div>
+          {/* The reason the total is worth trusting: it is derived from the
+              figure typed above, not the other way round. */}
+          <p className="text-[11px] leading-4" style={{ color: "var(--text-faint)" }}>
+            {usd(depValid ? depNum : 0)} lands on the card.
+          </p>
         </div>
         <div className="flex flex-col gap-2">
           <span className="text-[11px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
@@ -1513,6 +1531,11 @@ export function EvmCards() {
   const [amount, setAmount] = useState(String(OPEN_AMOUNT));
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Same picker and same default as a top-up — USDG lands exactly, ETH drifts
+  // between the quote and the signature.
+  const [payAsset, setPayAsset] = useState<"USDG" | "ETH">("USDG");
+  const [openStage, setOpenStage] = useState<string | null>(null);
+  const { walletClient, address } = useEvmWallet();
 
   // Returns rows rather than setting them, so the mount effect can do its
   // setState inside a promise callback instead of synchronously in the body.
@@ -1575,6 +1598,9 @@ export function EvmCards() {
   const waived = tier.id === "platinum";
   const fee = waived ? 0 : rawFee;
   const openTotal = (validAmount ? amountNum : 0) + fee;
+  // What the wallet is actually asked for, once the provider's inbound cut is
+  // added on. The button quotes this, because this is what gets signed.
+  const openCharged = validAmount ? depositToOpen(amountNum) : 0;
 
   function pickTier(t: Tier) {
     setTier(t);
@@ -1605,11 +1631,44 @@ export function EvmCards() {
     toast("success", "Preview card added");
   }
 
+  /**
+   * Pay for the card, then issue it. Same rail as a top-up: open a deposit
+   * intent, bridge to the address it hands back, and only then ask the server
+   * for a card — which re-checks with the provider that the money arrived.
+   *
+   * Until this existed, opening a card cost the user nothing and spent our
+   * provider balance instead.
+   */
   async function create() {
+    if (!walletClient || !address) return toast("error", "Connect your wallet first");
+    if (!FUNDING_SUPPORTED) {
+      return toast("error", "Opening a card needs mainnet — this build is on testnet");
+    }
     setBusy(true);
     try {
+      // The server prices this: the balance is what the user picked, but the
+      // deposit has to carry the fees and the provider's cut on top.
+      setOpenStage("Opening a payment…");
+      const { deposit: d } = await api<{
+        deposit: { id: string; pay_address: string; pay_amount: string };
+      }>("/api/cards", { action: "deposit", openAmount: amountNum });
+
+      setOpenStage("Pricing the route…");
+      const quote = await getPayoutQuote({
+        user: address,
+        from: payAsset,
+        amount: parseUnits(d.pay_amount, USDT_DECIMALS),
+        exactOutput: true,
+        to: { chainId: SOLANA_CHAIN_ID, currency: SOLANA_USDT, recipient: d.pay_address },
+      });
+
+      setOpenStage(`Confirm ${quote.inFormatted} ${quote.inSymbol} in your wallet…`);
+      await executeFunding(quote, ACTIVE_EVM_CHAIN, walletClient, (s) => setOpenStage(s));
+
+      setOpenStage("Issuing the card…");
       await api("/api/cards", {
         action: "create",
+        depositId: d.id,
         bin: BIN,
         amount: amountNum,
         nameOnCard: name.trim(),
@@ -1622,8 +1681,11 @@ export function EvmCards() {
       const fresh = (await fetchCards()).cards;
       setCards((prev) => merge(fresh, prev));
     } catch (e) {
+      // The bridge may have gone through even so. Don't phrase this as though
+      // the money is safe — it may be sitting as an unspent deposit.
       toast("error", (e as Error).message);
     } finally {
+      setOpenStage(null);
       setBusy(false);
     }
   }
@@ -1717,15 +1779,25 @@ export function EvmCards() {
         {/* The floor only applies to opening — worth saying here, or the $25
             looks like what every future top-up will cost too. */}
         <p className="text-[11px] leading-4" style={{ color: "var(--text-faint)" }}>
-          Only required to open. After this you can top up from ${MIN_TOPUP}, any
-          amount, any time.
+          Only required to open. After this you can top up from $
+          {MIN_FUNDABLE.toFixed(2)}, any amount, any time.
         </p>
+        {/* Their cut on the way in. Listed for the same reason as everywhere
+            else here: the total has to be the number that leaves the wallet. */}
+        <div className="mt-1 flex items-center justify-between text-xs">
+          <span style={{ color: "var(--text-faint)" }}>
+            Deposit fee ({DEPOSIT_FEE_RATE * 100}%)
+          </span>
+          <span className="font-mono tabular-nums">
+            {usd(validAmount ? openCharged - openTotal : 0)}
+          </span>
+        </div>
         <div
           className="mt-1 flex items-center justify-between pt-2 text-sm font-semibold"
           style={{ borderTop: "1px solid var(--border)" }}
         >
           <span>Charged now</span>
-          <span className="font-mono tabular-nums">{usd(openTotal)}</span>
+          <span className="font-mono tabular-nums">{usd(openCharged)}</span>
         </div>
       </div>
 
@@ -1742,10 +1814,50 @@ export function EvmCards() {
         </p>
       </div>
 
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+          Pay with
+        </span>
+        <div className="flex gap-2">
+          {(["USDG", "ETH"] as const).map((a) => {
+            const on = payAsset === a;
+            return (
+              <button
+                key={a}
+                onClick={() => setPayAsset(a)}
+                className="bv-press flex flex-1 items-center justify-center gap-2 py-2.5 text-xs font-medium"
+                style={{
+                  background: on ? "var(--brand-soft)" : "var(--surface-2)",
+                  border: `1px solid ${on ? "rgba(216,180,94,0.4)" : "var(--border)"}`,
+                  borderRadius: "var(--r-card)",
+                  color: on ? "var(--brand)" : "var(--text-dim)",
+                }}
+              >
+                {coinIcon(a, 20)}
+                {a}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] leading-5" style={{ color: "var(--text-faint)" }}>
+          Taken from your Robinhood Chain balance and bridged to the card.
+          {payAsset === "ETH" && (
+            <> ETH moves against the dollar, so the amount is fixed when you sign.</>
+          )}
+        </p>
+      </div>
+
+      {openStage && (
+        <p className="text-center text-[11px]" style={{ color: "var(--brand)" }}>
+          {openStage}
+        </p>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={() => setStage("tiers")}
           className="bv-press bv-btn-ghost h-11 flex-1 text-sm"
+          disabled={busy}
         >
           Back
         </button>
@@ -1754,7 +1866,9 @@ export function EvmCards() {
           disabled={busy || !validAmount || name.trim().length < 2}
           className="h-11 flex-1"
         >
-          {busy ? "Opening…" : `Open · ${usd(fee)}`}
+          {/* The whole figure, because the whole figure is now what leaves the
+              wallet — it used to say the fee alone and charge nothing at all. */}
+          {busy ? "Opening…" : `Open · ${usd(openCharged)}`}
         </Button>
       </div>
 

@@ -27,6 +27,16 @@ import {
   fundCard,
   setFrozen,
 } from "@/lib/cards/kripicard";
+import {
+  MIN_DEPOSIT,
+  MIN_FUNDABLE,
+  MIN_OPEN,
+  MIN_TOPUP,
+  depositToFund,
+  depositToOpen,
+  fundableWith,
+  openableWith,
+} from "@/lib/cards/pricing";
 import { rateLimit } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
@@ -69,11 +79,15 @@ export async function POST(req: NextRequest) {
       case "list":
         return Response.json({ cards: await listCards(wallet) });
 
+      // Issuing a card debits OUR account at the provider, so it happens only
+      // against a deposit the provider confirms has landed. Without that check
+      // this route hands out cards at our expense to anyone who can log in.
       case "create": {
         const bin = String(body.bin ?? "");
         const amount = Number(body.amount);
         const nameOnCard = String(body.nameOnCard ?? "").trim();
         const dateOfBirth = typeof body.dateOfBirth === "string" ? body.dateOfBirth : undefined;
+        const depositId = typeof body.depositId === "string" ? body.depositId : "";
 
         if (!bin) return bad("Pick a card BIN");
         if (!Number.isFinite(amount) || amount < 10) return bad("Minimum is $10");
@@ -81,39 +95,86 @@ export async function POST(req: NextRequest) {
         if (DOB_REQUIRED_BINS.has(bin) && !dateOfBirth) {
           return bad("This BIN requires a date of birth");
         }
+        if (!depositId) return bad("depositId is required");
 
-        const card = await createCard({
-          bin,
-          amount,
-          nameOnCard,
-          dateOfBirth,
-          email: typeof body.email === "string" ? body.email : undefined,
-        });
-        // Record before returning: a card we forget about is a card the owner
-        // can never reach again, and the money is already spent.
-        await recordCard({
-          cardId: card.card_id,
-          address: wallet,
-          last4: card.last_4 ?? "",
-          bin: card.bin ?? bin,
-          holder: nameOnCard,
-          // Ours, not theirs — the provider has no concept of tiers.
-          tierId: typeof body.tierId === "string" ? body.tierId : "standard",
-        });
-        return Response.json({ card });
+        // Same two guards as apply-deposit, and load-bearing for the same
+        // reason: the provider is the only witness that money moved, and the
+        // claim is atomic so one deposit cannot open two cards.
+        const { data: status } = await depositStatus(depositId);
+        if (!status.credited) return bad("Payment hasn't landed yet", 409);
+
+        const rec = await claimDeposit(depositId, wallet);
+        if (!rec) return bad("Payment already used or not found", 409);
+
+        // Their figure, not ours — what we stored was an estimate made before
+        // the bridge ran, and a route can arrive light.
+        const affordable = openableWith(status.credited_amount_usd);
+        const opening = Math.min(amount, affordable);
+        if (opening < MIN_OPEN) {
+          await releaseDeposit(depositId);
+          return bad("Too little left to open a card after fees");
+        }
+
+        try {
+          const card = await createCard({
+            bin,
+            amount: opening,
+            nameOnCard,
+            dateOfBirth,
+            email: typeof body.email === "string" ? body.email : undefined,
+          });
+          // Record before returning: a card we forget about is a card the owner
+          // can never reach again, and the money is already spent.
+          await recordCard({
+            cardId: card.card_id,
+            address: wallet,
+            last4: card.last_4 ?? "",
+            bin: card.bin ?? bin,
+            holder: nameOnCard,
+            // Ours, not theirs — the provider has no concept of tiers.
+            tierId: typeof body.tierId === "string" ? body.tierId : "standard",
+          });
+          return Response.json({ card, opening });
+        } catch (e) {
+          // Paid but not issued — hand the deposit back so a retry can use it
+          // instead of it dying marked applied with no card to show for it.
+          await releaseDeposit(depositId);
+          throw e;
+        }
       }
 
       case "fund": {
         const amount = Number(body.amount);
-        if (!Number.isFinite(amount) || amount < 10) return bad("Minimum is $10");
+        if (!Number.isFinite(amount) || amount < MIN_TOPUP) {
+          return bad(`Minimum is $${MIN_TOPUP}`);
+        }
         return Response.json(await fundCard(cardId, amount));
       }
 
       // Opens a deposit intent and hands back where to pay. The client bridges
       // to pay_address with Relay, then calls apply-deposit once it lands.
       case "deposit": {
-        const amount = Number(body.amount);
-        if (!Number.isFinite(amount) || amount < 10) return bad("Minimum is $10");
+        // Opening a card asks for a balance, not a deposit: the deposit has to
+        // carry the provider's issuance and funding fees on top, and then be
+        // grossed up again for the 1% they take on the way in. Getting this
+        // wrong doesn't overcharge — it underfunds, and the card opens short.
+        // Both forms name what should end up on the card; the deposit figure is
+        // derived. Sending a raw `amount` still works, and still means "credit
+        // this much to the account" — the fees then come out of it.
+        const open = Number(body.openAmount);
+        const top = Number(body.fundAmount);
+        const amount =
+          Number.isFinite(open) && open > 0
+            ? depositToOpen(open)
+            : Number.isFinite(top) && top > 0
+              ? depositToFund(top)
+              : Number(body.amount);
+        if (!Number.isFinite(amount)) return bad("Enter an amount");
+        // Naming the card figure, not the deposit figure — being told the
+        // minimum is $10 after asking to add $5 explains nothing.
+        if (amount < MIN_DEPOSIT) {
+          return bad(`Smallest top-up is $${MIN_FUNDABLE.toFixed(2)}`);
+        }
 
         // Funding an existing card? Then it has to be the caller's.
         const target = typeof body.forCardId === "string" ? body.forCardId : null;
@@ -156,8 +217,8 @@ export async function POST(req: NextRequest) {
 
         // Their funding fee ($1 + 4%) comes off the account on top, so the card
         // can only take what's left after it.
-        const onCard = Math.floor(((credited - 1) / 1.04) * 100) / 100;
-        if (onCard < 10) {
+        const onCard = fundableWith(credited);
+        if (onCard < MIN_TOPUP) {
           await releaseDeposit(depositId);
           return bad("Too little left to fund a card after fees");
         }

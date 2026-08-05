@@ -11,6 +11,7 @@
 
 import { claimDeposit, pendingDepositIds, releaseDeposit } from "@/lib/cards/cards-store";
 import { depositStatus, fundCard } from "@/lib/cards/kripicard";
+import { MIN_TOPUP, fundableWith } from "@/lib/cards/pricing";
 import { verifyWebhook } from "@/lib/cards/webhook-verify";
 
 export const runtime = "nodejs";
@@ -37,10 +38,18 @@ async function onDepositCompleted(payload: unknown): Promise<void> {
   if (!status.credited) return;
 
   const rec = await claimDeposit(id);
-  if (!rec?.cardId) return;
+  if (!rec) return;
+  // A deposit with no card behind it is paying to open one, and only the create
+  // call can do that — it carries the name and the BIN. Put it back rather than
+  // leaving it marked applied, which would strand the money in our account and
+  // fail the user's create with "already applied".
+  if (!rec.cardId) {
+    await releaseDeposit(id);
+    return;
+  }
 
-  const onCard = Math.floor(((status.credited_amount_usd - 1) / 1.04) * 100) / 100;
-  if (onCard < 10) {
+  const onCard = fundableWith(status.credited_amount_usd);
+  if (onCard < MIN_TOPUP) {
     await releaseDeposit(id);
     return;
   }
