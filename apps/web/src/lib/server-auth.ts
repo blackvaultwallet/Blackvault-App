@@ -64,24 +64,29 @@ export async function requireWallet(req: Request): Promise<string> {
     throw new AuthError("Invalid or expired session");
   }
 
-  const user = await privy().getUser(userId);
-  // Prefer the embedded wallet; a user can also link external ones, and those
-  // are not the account the app provisions and transacts from.
+  const user = await client.getUser(userId);
   const accounts = user.linkedAccounts ?? [];
+
+  // Ethereum specifically, not just "the first wallet". A Privy account can
+  // carry a Solana embedded wallet too, and it is often listed first — which
+  // silently keyed everything here to an address the rest of the app has never
+  // heard of. Every other identity in this codebase is the EVM one.
+  const evm = (a: unknown) =>
+    (a as { chainType?: string }).chainType === "ethereum" ||
+    (a as { address?: string }).address?.startsWith("0x") === true;
+
+  const isWallet = (a: unknown): a is { address: string } =>
+    (a as { type?: string }).type === "wallet" &&
+    typeof (a as { address?: string }).address === "string";
+
   const wallet =
     accounts.find(
-      (a): a is typeof a & { address: string } =>
-        a.type === "wallet" &&
-        (a as { walletClientType?: string }).walletClientType === "privy" &&
-        typeof (a as { address?: string }).address === "string"
-    ) ??
-    accounts.find(
-      (a): a is typeof a & { address: string } =>
-        a.type === "wallet" && typeof (a as { address?: string }).address === "string"
-    );
+      (a) =>
+        isWallet(a) && evm(a) && (a as { walletClientType?: string }).walletClientType === "privy"
+    ) ?? accounts.find((a) => isWallet(a) && evm(a));
 
-  if (!wallet) throw new AuthError("No wallet on this account");
-  return wallet.address.toLowerCase();
+  if (!wallet) throw new AuthError("No Ethereum wallet on this account");
+  return (wallet as { address: string }).address.toLowerCase();
 }
 
 /** Turns an AuthError into a 401 and anything else into a 500. */

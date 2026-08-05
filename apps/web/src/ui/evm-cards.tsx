@@ -325,7 +325,18 @@ function ChainStack() {
  * Cover fills the width and crops vertically, focused at 40% so the card and
  * her face stay in frame while the empty top of the asset falls away.
  */
-function Cover({ onOpen, onBack }: { onOpen: () => void; onBack?: () => void }) {
+function Cover({
+  onOpen,
+  onBack,
+  error,
+  onRetry,
+}: {
+  onOpen: () => void;
+  onBack?: () => void;
+  /** Why the card list is missing, if it is missing for a reason. */
+  error?: string | null;
+  onRetry?: () => void;
+}) {
   return (
     // Natural height, centred by the parent. It used to be h-full with the
     // artwork pushed down by mt-auto, which on a tall desktop pane opened a
@@ -405,6 +416,25 @@ function Cover({ onOpen, onBack }: { onOpen: () => void; onBack?: () => void }) 
             >
               My cards
             </button>
+          )}
+          {/* A card that exists but failed to load looks exactly like no card at
+              all, and silence here reads as "you own nothing" — the one thing we
+              must never say wrongly about someone's money. */}
+          {!onBack && error && (
+            <div className="mt-2 flex flex-col items-center gap-1 md:items-start">
+              <span className="text-[11px]" style={{ color: "var(--danger, #f87171)" }}>
+                Couldn&apos;t load your cards — {error}
+              </span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="bv-press h-8 text-xs underline"
+                  style={{ color: "var(--text-dim)" }}
+                >
+                  Try again
+                </button>
+              )}
+            </div>
           )}
           {/* Visa is what we issue on today; Mastercard arrives with Platinum.
               Marks drawn inline rather than shipped as art — a wrong logo is
@@ -1482,6 +1512,7 @@ export function EvmCards() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState(String(OPEN_AMOUNT));
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Returns rows rather than setting them, so the mount effect can do its
   // setState inside a promise callback instead of synchronously in the body.
@@ -1510,8 +1541,24 @@ export function EvmCards() {
     fetched.current = true;
     fetchCards()
       .then((r) => setCards((prev) => merge(r.cards, prev)))
-      .catch(() => setCards((prev) => prev ?? []));
+      .catch((e: unknown) => {
+        // Recorded, not swallowed. An empty array here is indistinguishable from
+        // owning nothing, and the screen says so out loud — which is how a
+        // rate-limit or an expired session came to look like a missing card.
+        setLoadError((e as Error).message || "request failed");
+        setCards((prev) => prev ?? []);
+      });
   }, [fetchCards]);
+
+  async function retryLoad() {
+    setLoadError(null);
+    try {
+      const fresh = (await fetchCards()).cards;
+      setCards((prev) => merge(fresh, prev));
+    } catch (e) {
+      setLoadError((e as Error).message || "request failed");
+    }
+  }
 
   // Itemised because a single "fees" figure is how people end up surprised.
   // Platinum waives it for the user, which means we pay it, so it still has to
@@ -1591,6 +1638,8 @@ export function EvmCards() {
         <Cover
           onOpen={() => setStage(cards?.length ? "tiers" : "empty")}
           onBack={cards?.length ? () => setStage("cover") : undefined}
+          error={loadError}
+          onRetry={retryLoad}
         />
       </div>
     );

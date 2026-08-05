@@ -117,12 +117,23 @@ let cache: FileShape | null = null;
 
 async function load(): Promise<FileShape> {
   if (cache) return cache;
+
+  let raw: string;
   try {
-    const raw = JSON.parse(await fs.readFile(FILE, "utf8")) as Partial<FileShape>;
-    cache = { cards: raw.cards ?? {}, deposits: raw.deposits ?? {} };
+    raw = await fs.readFile(FILE, "utf8");
   } catch {
+    // No file yet — the only case where "nobody owns anything" is the truth.
     cache = { cards: {}, deposits: {} };
+    return cache;
   }
+
+  // A file edited by hand can arrive with a byte order mark, and JSON.parse
+  // rejects it outright. Strip it rather than lose the store over three bytes.
+  // Anything else that fails to parse is left to throw: a corrupt store used to
+  // come back as an empty one, which tells a user with a funded card that they
+  // have none — the same lie, one layer down.
+  const parsed = JSON.parse(raw.replace(/^﻿/, "")) as Partial<FileShape>;
+  cache = { cards: parsed.cards ?? {}, deposits: parsed.deposits ?? {} };
   return cache;
 }
 
