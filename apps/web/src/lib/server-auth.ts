@@ -52,9 +52,14 @@ function bearer(req: Request): string {
 export async function requireWallet(req: Request): Promise<string> {
   const token = bearer(req);
 
+  // Resolved outside the try on purpose: a missing app secret used to be caught
+  // here and reported as "invalid session", which sends whoever is debugging it
+  // hunting a login problem that doesn't exist.
+  const client = privy();
+
   let userId: string;
   try {
-    ({ userId } = await privy().verifyAuthToken(token));
+    ({ userId } = await client.verifyAuthToken(token));
   } catch {
     throw new AuthError("Invalid or expired session");
   }

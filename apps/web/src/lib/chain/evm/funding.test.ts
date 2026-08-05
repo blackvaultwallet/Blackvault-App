@@ -31,7 +31,11 @@ const TWO_STEP = {
   ],
   fees: { relayer: { amountUsd: "0.040946" } },
   details: {
-    currencyIn: { amountUsd: "24.994025" },
+    currencyIn: {
+      amountUsd: "24.994025",
+      amountFormatted: "25",
+      currency: { symbol: "USDC" },
+    },
     currencyOut: {
       amountFormatted: "0.013115",
       amountUsd: "24.948143",
@@ -165,6 +169,28 @@ describe("getFundingQuote", () => {
     expect(body.recipient).toBe(to.recipient);
     // Nobody transacts from a provider's deposit address, so no gas is bundled.
     expect(body.topupGas).toBe(false);
+    // Default is exact-input; exactOutput is opt-in.
+    expect(body.tradeType).toBe("EXACT_INPUT");
+    expect("exactOutput" in body).toBe(false);
+  });
+
+  it("fixes the delivered amount when exactOutput is set", async () => {
+    const f = stubFetch(TWO_STEP);
+    // A provider's deposit address is quoted an exact figure and keeps the
+    // difference if you miss it, so the arriving amount is what gets pinned.
+    await getPayoutQuote({
+      user: USER,
+      from: "USDG",
+      amount: 20_020_000n,
+      exactOutput: true,
+      to: {
+        chainId: 792703809,
+        currency: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        recipient: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      },
+    });
+    expect(bodyOf(f, 0).tradeType).toBe("EXACT_OUTPUT");
+    expect(bodyOf(f, 0).amount).toBe("20020000");
   });
 
   it("surfaces the response body on a Relay error", async () => {

@@ -79,6 +79,9 @@ export interface FundingQuote {
   outFormatted: string;
   outSymbol: string;
   outUsd: string;
+  /** What leaves the wallet — the figure that matters on an exact-output quote. */
+  inFormatted: string;
+  inSymbol: string;
   inUsd: string;
   feeUsd: string;
   /**
@@ -136,15 +139,22 @@ async function quote(params: {
   destinationCurrency: string;
   amount: bigint;
   topupGas: boolean;
+  /** EXACT_OUTPUT fixes what arrives and lets the input float. */
+  exactOutput?: boolean;
 }): Promise<FundingQuote> {
   if (!FUNDING_SUPPORTED) {
     throw new Error("Funding needs mainnet — Relay does not route to Robinhood testnet");
   }
+  const { exactOutput, ...body } = params;
   const q = await relay<{
     steps: RelayStep[];
     fees: { relayer?: { amountUsd?: string } };
     details: {
-      currencyIn: { amountUsd: string };
+      currencyIn: {
+        amountUsd: string;
+        amountFormatted: string;
+        currency: { symbol: string };
+      };
       currencyOut: {
         amountFormatted: string;
         amountUsd: string;
@@ -154,9 +164,9 @@ async function quote(params: {
       timeEstimate: number;
     };
   }>("/quote", {
-    ...params,
+    ...body,
     amount: params.amount.toString(),
-    tradeType: "EXACT_INPUT",
+    tradeType: exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT",
   });
 
   const steps = q.steps ?? [];
@@ -164,6 +174,8 @@ async function quote(params: {
     outFormatted: q.details.currencyOut.amountFormatted,
     outSymbol: q.details.currencyOut.currency.symbol,
     outUsd: q.details.currencyOut.amountUsd,
+    inFormatted: q.details.currencyIn.amountFormatted,
+    inSymbol: q.details.currencyIn.currency.symbol,
     inUsd: q.details.currencyIn.amountUsd,
     feeUsd: q.fees.relayer?.amountUsd ?? "0",
     gasTopupUsd: q.details.currencyGasTopup?.amountUsd,
@@ -209,8 +221,15 @@ export async function getPayoutQuote(opts: {
   user: string;
   /** What's being spent on Robinhood Chain. */
   from: FundingDestination;
+  /** Base units — of the origin asset, or of the destination when exactOutput. */
   amount: bigint;
   to: PayoutTarget;
+  /**
+   * Fix what arrives rather than what is spent. Card providers quote a deposit
+   * address an exact figure and ignore the difference if you miss it — we have
+   * already had one come back `paid_over` with the excess uncredited.
+   */
+  exactOutput?: boolean;
 }): Promise<FundingQuote> {
   return quote({
     user: getAddress(opts.user),
@@ -221,8 +240,14 @@ export async function getPayoutQuote(opts: {
     destinationCurrency: opts.to.currency,
     amount: opts.amount,
     topupGas: false,
+    exactOutput: opts.exactOutput,
   });
 }
+
+/** Kripicard settles deposits in USDT on Solana. */
+export const SOLANA_CHAIN_ID = 792703809;
+export const SOLANA_USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+export const USDT_DECIMALS = 6;
 
 /** Terminal states from Relay's /intents/status. */
 const DONE = new Set(["success", "failure", "refund"]);

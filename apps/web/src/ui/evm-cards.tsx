@@ -14,6 +14,17 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { useAuthedFetch } from "@/lib/authed-fetch";
+import { parseUnits } from "viem";
+import { useEvmWallet } from "@/lib/chain/evm/wallet";
+import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
+import {
+  FUNDING_SUPPORTED,
+  SOLANA_CHAIN_ID,
+  SOLANA_USDT,
+  USDT_DECIMALS,
+  executeFunding,
+  getPayoutQuote,
+} from "@/lib/chain/evm/funding";
 import { useToast } from "@/components/toast";
 import { coinIcon } from "@/ui/evm-coins";
 import { BaseIcon, EthIcon, OptimismIcon, RhChainIcon } from "@/ui/icons";
@@ -958,6 +969,56 @@ function CardItem({
   // ETH. Paying in ETH means the figure moves between quote and signature, and
   // the provider's deposit address expires in about half an hour.
   const [payAsset, setPayAsset] = useState<"USDG" | "ETH">("USDG");
+  const [depStage, setDepStage] = useState<string | null>(null);
+  const { walletClient, address } = useEvmWallet();
+
+  /**
+   * Open a deposit intent, bridge to the address it hands back, then tell the
+   * server to apply it.
+   *
+   * Exact-output on the quote: the provider expects that figure and keeps the
+   * difference otherwise — we have already had one land `paid_over` with the
+   * excess uncredited. The server re-checks with the provider before funding
+   * anything, so a bridge that half-finishes cannot conjure a balance.
+   */
+  async function deposit() {
+    if (!walletClient || !address) return toast("error", "Connect your wallet first");
+    setBusy("deposit");
+    try {
+      setDepStage("Opening a deposit…");
+      const { deposit: d } = await api<{ deposit: { id: string; pay_address: string; pay_amount: string } }>(
+        "/api/cards",
+        { action: "deposit", amount: depNum, forCardId: row.cardId }
+      );
+
+      setDepStage("Pricing the route…");
+      const quote = await getPayoutQuote({
+        user: address,
+        from: payAsset,
+        amount: parseUnits(d.pay_amount, USDT_DECIMALS),
+        exactOutput: true,
+        to: { chainId: SOLANA_CHAIN_ID, currency: SOLANA_USDT, recipient: d.pay_address },
+      });
+
+      setDepStage(`Confirm ${quote.inFormatted} ${quote.inSymbol} in your wallet…`);
+      await executeFunding(quote, ACTIVE_EVM_CHAIN, walletClient, (s) => setDepStage(s));
+
+      setDepStage("Crediting the card…");
+      await api("/api/cards", { action: "apply-deposit", depositId: d.id });
+
+      cardCache.delete(row.cardId);
+      toast("success", "Funds added");
+      setDepositing(false);
+      setDepAmount("");
+    } catch (e) {
+      // The bridge may well have gone through — the webhook applies it either
+      // way, so this must not read as "your money is gone".
+      toast("error", (e as Error).message);
+    } finally {
+      setDepStage(null);
+      setBusy(null);
+    }
+  }
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -1289,17 +1350,23 @@ function CardItem({
             </>
           )}
         </p>
+        {depStage && (
+          <p className="text-center text-[11px]" style={{ color: "var(--brand)" }}>
+            {depStage}
+          </p>
+        )}
         <Button
-          onClick={() =>
-            toast(
-              "error",
-              row.demo ? "Preview card — deposits are disabled" : "Deposit flow lands next"
-            )
-          }
-          disabled={!depValid}
+          onClick={() => {
+            if (row.demo) return toast("error", "Preview card — deposits are disabled");
+            if (!FUNDING_SUPPORTED) {
+              return toast("error", "Deposits need mainnet — this build is on testnet");
+            }
+            void deposit();
+          }}
+          disabled={!depValid || busy === "deposit"}
           className="h-12 w-full"
         >
-          Continue
+          {busy === "deposit" ? "Working…" : "Continue"}
         </Button>
       </Sheet>
 
