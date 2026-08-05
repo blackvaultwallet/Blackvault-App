@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEPOSIT_FEE_RATE,
+  MIN_DEPOSIT,
+  MIN_FUNDABLE,
+  MIN_OPEN,
+  MIN_OPENABLE,
+  MIN_TOPUP,
   costToFund,
   costToOpen,
   depositToFund,
@@ -53,6 +58,30 @@ describe("card pricing", () => {
     // The route reads this as "too little left after fees" — it must not come
     // back as 0 and look like a legitimate free card.
     expect(openableWith(3)).toBeLessThan(0);
+  });
+});
+
+describe("the deposit floor", () => {
+  // The one that binds. Their API refuses anything under $20 — the minimums the
+  // card advertises ($10 to open, $1 after) are unreachable through this rail,
+  // and quoting them offers a payment that fails at the provider.
+  it("is cleared by the smallest top-up we offer", () => {
+    expect(depositToFund(MIN_FUNDABLE)).toBeGreaterThanOrEqual(MIN_DEPOSIT);
+  });
+
+  it("is cleared by the smallest card we offer", () => {
+    expect(depositToOpen(MIN_OPENABLE)).toBeGreaterThanOrEqual(MIN_DEPOSIT);
+  });
+
+  it("is not cleared a cent below either — these are the true floors", () => {
+    expect(depositToFund(MIN_FUNDABLE - 0.01)).toBeLessThan(MIN_DEPOSIT);
+    expect(depositToOpen(MIN_OPENABLE - 0.01)).toBeLessThan(MIN_DEPOSIT);
+  });
+
+  it("sits above what the card itself would allow", () => {
+    // If this ever inverts, the extra floors are dead weight and should go.
+    expect(MIN_FUNDABLE).toBeGreaterThan(MIN_TOPUP);
+    expect(MIN_OPENABLE).toBeGreaterThan(MIN_OPEN);
   });
 });
 

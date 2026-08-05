@@ -30,6 +30,7 @@ import {
   FUNDING_RATE,
   ISSUANCE_FEE,
   MIN_FUNDABLE,
+  MIN_OPENABLE,
   PROCESSING_FEE,
   depositToFund,
   depositToOpen,
@@ -93,15 +94,9 @@ const BIN = "441357";
 // route enforces them, and the two disagreeing is how someone pays one number
 // and is charged another.
 
-/**
- * Balance the card is opened with.
- *
- * Their createcard endpoint has no way to issue an empty card — an amount is
- * required and is taken atomically with the fees — so opening always costs
- * something. $10 is their floor at creation, confirmed by their team; the $1
- * figure on their dashboard is the top-up minimum, not this one.
- */
-const OPEN_AMOUNT = 10;
+// The floors live in lib/cards/pricing — the card's own ($10 to open, $1 after)
+// and the deposit rail's, which sits above both and is the one that decides
+// what this screen can offer.
 
 /** Quick picks for the opening balance. The floor is first so the cheapest
  *  option is the default one your thumb lands on. */
@@ -695,7 +690,9 @@ function TierPicker({
           <ul className="flex flex-col gap-1.5 px-1 pb-1">
             {!t.soon && (
               <li className="flex items-center gap-2 text-xs" style={{ color: "var(--text-dim)" }}>
-                <Tick /> Min deposit ${t.minDeposit}
+                {/* What this tier can actually be opened with — the tier's own
+                    figure would advertise a card the rail won't sell. */}
+                <Tick /> Min deposit ${Math.max(MIN_OPENABLE, t.minDeposit)}
               </li>
             )}
             {t.perks.map((p) => (
@@ -1528,7 +1525,9 @@ export function EvmCards() {
   const [tier, setTier] = useState<Tier>(TIERS[0]!);
   const [active, setActive] = useState(0);
   const [name, setName] = useState("");
-  const [amount, setAmount] = useState(String(OPEN_AMOUNT));
+  const [amount, setAmount] = useState(
+    String(Math.max(MIN_OPENABLE, TIERS[0]!.minDeposit))
+  );
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Same picker and same default as a top-up — USDG lands exactly, ETH drifts
@@ -1588,7 +1587,9 @@ export function EvmCards() {
   // be computed either way.
   // Each tier can ask for more than the provider's floor — that is what makes a
   // tier a tier. Standard sits on the floor; Gold and Platinum sit above it.
-  const minOpen = Math.max(OPEN_AMOUNT, tier.minDeposit);
+  // MIN_OPENABLE, not the card's $10: a $10 balance needs a deposit their rail
+  // refuses, so offering it would be offering a card that cannot be bought.
+  const minOpen = Math.max(MIN_OPENABLE, tier.minDeposit);
   const openPresets = [minOpen, ...OPEN_PRESETS.filter((p) => p > minOpen)];
 
   const amountNum = Number(amount);
@@ -1605,7 +1606,7 @@ export function EvmCards() {
   function pickTier(t: Tier) {
     setTier(t);
     // Seed with the tier's own floor, or Gold would open on a Standard amount.
-    setAmount(String(Math.max(OPEN_AMOUNT, t.minDeposit)));
+    setAmount(String(Math.max(MIN_OPENABLE, t.minDeposit)));
     setStage("form");
   }
 

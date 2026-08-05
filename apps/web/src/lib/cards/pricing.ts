@@ -14,11 +14,15 @@ export const MIN_OPEN = 10;
 /** Their floor on a later top-up — US cards, per their support. */
 export const MIN_TOPUP = 1;
 /**
- * Their floor on a single deposit into our account, which is a different limit
- * from either of the above and the one that actually binds: a $1 top-up needs
- * only a $2.06 deposit, and they will not take one that small.
+ * Their floor on a single deposit into our account. A different limit from
+ * either of the above, far above both, and the one that actually binds.
+ *
+ * Verified against their live API on 2026-08-06 — $1 and $2.06 both come back
+ * "Minimum deposit is $20 (USD)". This had been guessed at $10, which quietly
+ * made the cheapest card unopenable: $10 of balance needs a $16.57 deposit,
+ * and they refuse it.
  */
-export const MIN_DEPOSIT = 10;
+export const MIN_DEPOSIT = 20;
 
 /** Charged once, when the card is opened. */
 export const ISSUANCE_FEE = 5;
@@ -81,14 +85,51 @@ export function depositToFund(amount: number): number {
   return Math.ceil((costToFund(amount) / (1 - DEPOSIT_FEE_RATE)) * 100 - EPSILON) / 100;
 }
 
+/** Rounded up, so the derived deposit lands on or above their floor. */
+const ceilCent = (n: number) => Math.ceil(n * 100 - EPSILON) / 100;
+
+/** What our account is credited by the smallest deposit they will take. */
+const MIN_CREDIT = MIN_DEPOSIT * (1 - DEPOSIT_FEE_RATE);
+
+/**
+ * The true floor, found by stepping down from the algebraic one.
+ *
+ * Algebra alone lands a cent high, because the deposit figure rounds up as
+ * well: $18.07 derives a deposit of exactly $20.00 and clears, though solving
+ * for it says $18.08. A cent is nothing to charge, but it is a cent of a
+ * minimum we would be advertising wrongly.
+ */
+const smallestClearing = (derive: (n: number) => number, start: number): number => {
+  let c = Math.round(start * 100);
+  while (c > 1 && derive((c - 1) / 100) >= MIN_DEPOSIT) c--;
+  return c / 100;
+};
+
 /**
  * The smallest top-up the deposit floor actually permits.
  *
  * MIN_TOPUP is what the card accepts; this is what the payment rail allows, and
- * it is the larger of the two. Quoting the card's figure alone would offer a
- * $1 top-up that fails at the provider with a message about deposits.
+ * it is far the larger of the two. Quoting the card's $1 would offer a top-up
+ * that fails at the provider with a message about deposit minimums.
+ *
+ * Rounded up, not down: a cent under and the deposit it derives comes to
+ * $19.99, which they refuse.
  */
 export const MIN_FUNDABLE = Math.max(
   MIN_TOPUP,
-  fundableWith(MIN_DEPOSIT * (1 - DEPOSIT_FEE_RATE))
+  smallestClearing(depositToFund, ceilCent((MIN_CREDIT - PROCESSING_FEE) / (1 + FUNDING_RATE)))
+);
+
+/**
+ * The smallest opening balance whose deposit clears that same floor.
+ *
+ * Above the card's own $10 minimum, because opening carries the issuance fee
+ * as well — so the balance a $20 deposit can pay for is smaller.
+ */
+export const MIN_OPENABLE = Math.max(
+  MIN_OPEN,
+  smallestClearing(
+    depositToOpen,
+    ceilCent((MIN_CREDIT - ISSUANCE_FEE - PROCESSING_FEE) / (1 + FUNDING_RATE))
+  )
 );

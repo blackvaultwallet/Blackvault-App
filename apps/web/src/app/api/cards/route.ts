@@ -30,7 +30,7 @@ import {
 import {
   MIN_DEPOSIT,
   MIN_FUNDABLE,
-  MIN_OPEN,
+  MIN_OPENABLE,
   MIN_TOPUP,
   depositToFund,
   depositToOpen,
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
         // the bridge ran, and a route can arrive light.
         const affordable = openableWith(status.credited_amount_usd);
         const opening = Math.min(amount, affordable);
-        if (opening < MIN_OPEN) {
+        if (opening < MIN_OPENABLE) {
           await releaseDeposit(depositId);
           return bad("Too little left to open a card after fees");
         }
