@@ -115,20 +115,31 @@ function destinationCurrency(dest: FundingDestination): Address {
   return getAddress(usdg);
 }
 
-export async function getFundingQuote(opts: {
+/**
+ * Where a payout lands. Deliberately loose about the address: Relay routes to
+ * Solana too, and a Solana address is base58, not a checksummed 0x string.
+ */
+export interface PayoutTarget {
+  chainId: number;
+  /** Token address, Solana mint, or the native sentinel. */
+  currency: string;
+  recipient: string;
+}
+
+/** One Relay quote. Both public helpers below are thin wrappers over this. */
+async function quote(params: {
   user: string;
-  origin: FundingOrigin;
-  asset: FundingAsset;
-  /** Base units of the origin asset (wei for ETH, 6-dec for USDC). */
+  recipient: string;
+  originChainId: number;
+  originCurrency: string;
+  destinationChainId: number;
+  destinationCurrency: string;
   amount: bigint;
-  /** Defaults to ETH — see FundingDestination. */
-  destination?: FundingDestination;
+  topupGas: boolean;
 }): Promise<FundingQuote> {
   if (!FUNDING_SUPPORTED) {
     throw new Error("Funding needs mainnet — Relay does not route to Robinhood testnet");
   }
-  const user = getAddress(opts.user);
-  const destination = opts.destination ?? "ETH";
   const q = await relay<{
     steps: RelayStep[];
     fees: { relayer?: { amountUsd?: string } };
@@ -143,16 +154,9 @@ export async function getFundingQuote(opts: {
       timeEstimate: number;
     };
   }>("/quote", {
-    user,
-    recipient: user,
-    originChainId: opts.origin.chain.id,
-    destinationChainId: ACTIVE_EVM_CHAIN.id,
-    originCurrency: opts.asset === "ETH" ? NATIVE : opts.origin.usdc,
-    destinationCurrency: destinationCurrency(destination),
-    amount: opts.amount.toString(),
+    ...params,
+    amount: params.amount.toString(),
     tradeType: "EXACT_INPUT",
-    // A token-only fill leaves a fresh wallet with no gas; ETH needs no topup.
-    topupGas: destination !== "ETH",
   });
 
   const steps = q.steps ?? [];
@@ -168,6 +172,56 @@ export async function getFundingQuote(opts: {
     steps,
     statusPath: steps.flatMap((s) => s.items ?? []).at(-1)?.check?.endpoint,
   };
+}
+
+/** Money in: another chain → this wallet on Robinhood Chain. */
+export async function getFundingQuote(opts: {
+  user: string;
+  origin: FundingOrigin;
+  asset: FundingAsset;
+  /** Base units of the origin asset (wei for ETH, 6-dec for USDC). */
+  amount: bigint;
+  /** Defaults to ETH — see FundingDestination. */
+  destination?: FundingDestination;
+}): Promise<FundingQuote> {
+  const user = getAddress(opts.user);
+  const destination = opts.destination ?? "ETH";
+  return quote({
+    user,
+    recipient: user,
+    originChainId: opts.origin.chain.id,
+    originCurrency: opts.asset === "ETH" ? NATIVE : opts.origin.usdc,
+    destinationChainId: ACTIVE_EVM_CHAIN.id,
+    destinationCurrency: destinationCurrency(destination),
+    amount: opts.amount,
+    // A token-only fill leaves a fresh wallet with no gas; ETH needs no topup.
+    topupGas: destination !== "ETH",
+  });
+}
+
+/**
+ * Money out: this wallet on Robinhood Chain → an address anywhere Relay reaches.
+ * Card providers hand you a deposit address on their own rail (Kripicard's is
+ * USDT on Solana), so the recipient here is theirs, not the user's — and no gas
+ * top-up, because nobody is going to transact from it.
+ */
+export async function getPayoutQuote(opts: {
+  user: string;
+  /** What's being spent on Robinhood Chain. */
+  from: FundingDestination;
+  amount: bigint;
+  to: PayoutTarget;
+}): Promise<FundingQuote> {
+  return quote({
+    user: getAddress(opts.user),
+    recipient: opts.to.recipient,
+    originChainId: ACTIVE_EVM_CHAIN.id,
+    originCurrency: destinationCurrency(opts.from),
+    destinationChainId: opts.to.chainId,
+    destinationCurrency: opts.to.currency,
+    amount: opts.amount,
+    topupGas: false,
+  });
 }
 
 /** Terminal states from Relay's /intents/status. */
@@ -187,12 +241,13 @@ async function waitForFill(path: string, onStage?: Stage): Promise<string> {
 }
 
 /**
- * Runs every tx in the quote on the origin chain, then waits for the fill.
- * Switches the wallet to the origin chain and always switches back.
+ * Runs every tx in the quote on `origin`, then waits for the fill. Switches the
+ * wallet to that chain and always switches back. `origin` is a funding origin
+ * for money in, and Robinhood Chain itself for a payout.
  */
 export async function executeFunding(
   quote: FundingQuote,
-  origin: FundingOrigin,
+  origin: Chain,
   wallet: WalletClient,
   onStage?: Stage
 ): Promise<string> {
@@ -202,12 +257,12 @@ export async function executeFunding(
   // Reads go through the wallet's own provider, so no extra RPC host learns
   // the user's IP (the whole point of the /api/rpc proxy).
   const reader = createPublicClient({
-    chain: origin.chain,
+    chain: origin,
     transport: custom({ request: wallet.request }),
   });
 
-  onStage?.(`Switching to ${origin.chain.name}…`);
-  await wallet.switchChain({ id: origin.chain.id });
+  onStage?.(`Switching to ${origin.name}…`);
+  await wallet.switchChain({ id: origin.id });
 
   try {
     const items = quote.steps.flatMap((s) =>
@@ -217,7 +272,7 @@ export async function executeFunding(
       onStage?.(step.description ?? `Signing ${step.id}…`);
       const hash = await wallet.sendTransaction({
         account,
-        chain: origin.chain,
+        chain: origin,
         to: item.data.to,
         data: item.data.data,
         value: BigInt(item.data.value ?? "0"),

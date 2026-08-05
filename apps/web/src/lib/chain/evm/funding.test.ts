@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Funding is mainnet-only (Relay has no Robinhood testnet route) and local dev
 // runs testnet — so pin the network before the module reads it.
 vi.stubEnv("NEXT_PUBLIC_EVM_NETWORK", "mainnet");
-const { FUNDING_ORIGINS, FUNDING_SUPPORTED, getFundingQuote } = await import("./funding");
+const { FUNDING_ORIGINS, FUNDING_SUPPORTED, getFundingQuote, getPayoutQuote } =
+  await import("./funding");
 
 const USER = "0x4d883c37064FEbB056C94047aC3efacdAaDd9Ad4";
 const RH_USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
@@ -143,6 +144,27 @@ describe("getFundingQuote", () => {
     });
     expect(q.statusPath).toBeUndefined();
     expect(q.txCount).toBe(1);
+  });
+
+  it("sends a payout the other way, to someone else's address", async () => {
+    const f = stubFetch(TWO_STEP);
+    // A card provider's deposit rail — Kripicard's is USDT on Solana, and a
+    // Solana address is base58, so it must not be run through getAddress.
+    const to = {
+      chainId: 792703809,
+      currency: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      recipient: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    };
+    await getPayoutQuote({ user: USER, from: "USDG", amount: 25_000_000n, to });
+
+    const body = bodyOf(f, 0);
+    expect(body.originChainId).toBe(4663);
+    expect(body.originCurrency).toBe(RH_USDG);
+    expect(body.destinationChainId).toBe(to.chainId);
+    expect(body.destinationCurrency).toBe(to.currency);
+    expect(body.recipient).toBe(to.recipient);
+    // Nobody transacts from a provider's deposit address, so no gas is bundled.
+    expect(body.topupGas).toBe(false);
   });
 
   it("surfaces the response body on a Relay error", async () => {

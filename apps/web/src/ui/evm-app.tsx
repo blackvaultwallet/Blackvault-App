@@ -21,9 +21,9 @@ import { EvmSettings } from "@/ui/evm-settings";
 import { EvmSend } from "@/ui/evm-send";
 import { EvmReceive } from "@/ui/evm-receive";
 import { EvmAddToken } from "@/ui/evm-add-token";
+import { EvmCards } from "@/ui/evm-cards";
 import { ComingSoonSheet } from "@/ui/coming-soon-sheet";
 import { EvmDegen } from "@/ui/evm-degen";
-import { CardShowcase } from "@/ui/card-showcase";
 import { EvmPrivateScan } from "@/ui/evm-private-scan";
 import { parseEvmPayRequest } from "@/lib/chain/evm/pay-link";
 import { BottomNav, SideNav, type NavId } from "@/ui/bottom-nav";
@@ -342,7 +342,12 @@ export function EvmApp() {
         onClose={() => setSoon(null)}
       />
 
-      <CardShowcase open={cardOpen} onClose={() => setCardOpen(false)} />
+      {/* Cards — the showcase it replaced is kept for the marketing shot. */}
+      {cardOpen && (
+        <Screen title="Cards" onClose={() => setCardOpen(false)}>
+          <EvmCards />
+        </Screen>
+      )}
 
       <EvmPrivateScan open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScan} />
 
