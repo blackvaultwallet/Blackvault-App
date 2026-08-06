@@ -16,6 +16,8 @@
 import {
   createPublicClient,
   custom,
+  erc20Abi,
+  formatUnits,
   getAddress,
   type Address,
   type Chain,
@@ -85,6 +87,11 @@ export interface FundingQuote {
   inFormatted: string;
   inSymbol: string;
   inUsd: string;
+  /** Base units of the above, so it can be checked against a real balance. */
+  inAmount?: string;
+  inDecimals?: number;
+  /** Token being spent, or the native sentinel. */
+  inCurrency?: string;
   feeUsd: string;
   /**
    * USD of destination ETH bundled in as gas, when funding a token. Relay sets
@@ -155,7 +162,9 @@ async function quote(params: {
       currencyIn: {
         amountUsd: string;
         amountFormatted: string;
-        currency: { symbol: string };
+        /** Base units. Optional in our typing because we must not break on it. */
+        amount?: string;
+        currency: { symbol: string; address?: string; decimals?: number };
       };
       currencyOut: {
         amountFormatted: string;
@@ -179,6 +188,9 @@ async function quote(params: {
     inFormatted: q.details.currencyIn.amountFormatted,
     inSymbol: q.details.currencyIn.currency.symbol,
     inUsd: q.details.currencyIn.amountUsd,
+    inAmount: q.details.currencyIn.amount,
+    inDecimals: q.details.currencyIn.currency.decimals,
+    inCurrency: q.details.currencyIn.currency.address ?? params.originCurrency,
     feeUsd: q.fees.relayer?.amountUsd ?? "0",
     gasTopupUsd: q.details.currencyGasTopup?.amountUsd,
     etaSeconds: q.details.timeEstimate,
@@ -292,6 +304,35 @@ export async function executeFunding(
   await wallet.switchChain({ id: origin.id });
 
   try {
+    // Relay quotes without caring whether the wallet can pay, so this is the
+    // only place the question gets asked. Without it the first signature goes
+    // through (an approval costs nothing), the second cannot, and the flow sits
+    // on "depositing funds to the relayer" forever with no idea why — which is
+    // exactly how someone spent five minutes staring at a screen holding $16
+    // against a $20.21 quote.
+    //
+    // After the chain switch: reads go through the wallet's own provider, and
+    // before it that provider is pointed somewhere else.
+    if (quote.inAmount) {
+      const need = BigInt(quote.inAmount);
+      const held =
+        !quote.inCurrency || quote.inCurrency === NATIVE
+          ? await reader.getBalance({ address: account.address })
+          : await reader.readContract({
+              address: getAddress(quote.inCurrency),
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [account.address],
+            });
+      if (held < need) {
+        const dp = quote.inDecimals ?? 18;
+        throw new Error(
+          `Not enough ${quote.inSymbol}. This needs ${quote.inFormatted} and you have ` +
+            `${formatUnits(held, dp)} — top up, or pay with a different asset.`
+        );
+      }
+    }
+
     const items = quote.steps.flatMap((s) =>
       (s.items ?? []).map((item) => ({ step: s, item }))
     );
