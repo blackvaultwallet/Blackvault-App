@@ -27,7 +27,9 @@ import { ACTIVE_EVM_CHAIN } from "@/lib/chain/evm/config";
 import { findEvmToken } from "@/lib/chain/evm/tokens";
 import type { Stage } from "@/lib/chain/types";
 
-const RELAY_API = "https://api.relay.link";
+// Same-origin, like every other outbound call here. Going direct leaked the
+// user's IP alongside their address to Relay, and CSP blocked it anyway.
+const RELAY_API = "/api/relay";
 /** Relay's sentinel for a chain's native coin. */
 const NATIVE: Address = "0x0000000000000000000000000000000000000000";
 
