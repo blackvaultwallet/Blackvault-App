@@ -55,7 +55,14 @@ export async function POST(req: NextRequest) {
   // hits every user of the key at once, so one impatient caller must not take
   // cards down for everybody. Set well under whatever theirs is — 20/minute was
   // far too generous and tripped them in ordinary use.
-  const limited = await rateLimit(req, `cards:${wallet}`, 6, 60);
+  //
+  // Twelve, not six, because opening a card now waits for the payment to clear
+  // and polls while it does. Six left no headroom: a page load, a deposit and
+  // four polls reached it inside the first minute, and the limiter would have
+  // failed a card that had already been paid for — the same failure this whole
+  // flow was rewritten to stop. Four polls a minute against their API is still
+  // an order of magnitude under what tripped them.
+  const limited = await rateLimit(req, `cards:${wallet}`, 12, 60);
   if (limited) return limited;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
