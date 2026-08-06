@@ -11,7 +11,7 @@
 // tripped, so nothing here polls. Details and transactions load when asked for.
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { useAuthedFetch } from "@/lib/authed-fetch";
 import { parseUnits } from "viem";
@@ -97,6 +97,53 @@ const BIN = "441357";
 // The floors live in lib/cards/pricing — the card's own ($10 to open, $1 after)
 // and the deposit rail's, which sits above both and is the one that decides
 // what this screen can offer.
+
+/**
+ * A payment made but not yet turned into a card.
+ *
+ * Kept in localStorage from before the first token moves until the card
+ * exists. The deposit id is the only handle on money already credited to the
+ * provider — without it a closed tab, a dead battery or a failed issue leaves
+ * the payment stranded in an account the user has no way to reach.
+ */
+interface PendingOpen {
+  depositId: string;
+  amount: number;
+  nameOnCard: string;
+  tierId: string;
+}
+
+const openKey = (owner: string) => `bv_card_open_${owner.toLowerCase()}`;
+
+function rememberOpen(owner: string, open: PendingOpen): void {
+  try {
+    window.localStorage.setItem(openKey(owner), JSON.stringify(open));
+  } catch {
+    // Private mode, or storage full. The flow still works in this tab; only
+    // recovery after a reload is lost, so don't fail the payment over it.
+  }
+}
+
+function readOpen(owner: string): PendingOpen | null {
+  try {
+    const raw = window.localStorage.getItem(openKey(owner));
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<PendingOpen>;
+    return typeof o.depositId === "string" && typeof o.amount === "number"
+      ? { depositId: o.depositId, amount: o.amount, nameOnCard: o.nameOnCard ?? "", tierId: o.tierId ?? "standard" }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetOpen(owner: string): void {
+  try {
+    window.localStorage.removeItem(openKey(owner));
+  } catch {
+    /* nothing to do — a stale entry only costs one extra offer to resume */
+  }
+}
 
 /** Quick picks for the opening balance. The floor is first so the cheapest
  *  option is the default one your thumb lands on. */
@@ -327,12 +374,21 @@ function Cover({
   onBack,
   error,
   onRetry,
+  pending,
+  onResume,
+  busy,
+  stage,
 }: {
   onOpen: () => void;
   onBack?: () => void;
   /** Why the card list is missing, if it is missing for a reason. */
   error?: string | null;
   onRetry?: () => void;
+  /** A payment already made, still owed a card. */
+  pending?: PendingOpen | null;
+  onResume?: () => void;
+  busy?: boolean;
+  stage?: string | null;
 }) {
   return (
     // Natural height, centred by the parent. It used to be h-full with the
@@ -400,6 +456,37 @@ function Cover({
           }}
         />
         <div className="mx-auto w-full max-w-md md:max-w-none">
+          {/* Ahead of everything else on the screen. Someone whose payment went
+              through and whose card didn't should not have to read a pitch. */}
+          {pending && (
+            <div
+              className="mb-3 flex flex-col gap-2 p-3"
+              style={{ ...glass, background: "rgba(216,180,94,0.08)" }}
+            >
+              <p className="text-[12px] leading-5">
+                <strong>You&apos;ve already paid for a card.</strong> It was taken
+                from your wallet but the card was never issued — nothing is lost.
+              </p>
+              <button
+                onClick={onResume}
+                disabled={busy}
+                className="bv-press h-10 text-xs font-medium"
+                style={{
+                  background: "var(--brand-soft)",
+                  border: "1px solid rgba(216,180,94,0.4)",
+                  borderRadius: "var(--r-card)",
+                  color: "var(--brand)",
+                }}
+              >
+                {busy ? "Working…" : "Finish opening it"}
+              </button>
+              {stage && (
+                <p className="text-center text-[11px]" style={{ color: "var(--brand)" }}>
+                  {stage}
+                </p>
+              )}
+            </div>
+          )}
           <Button onClick={onOpen} className="h-12 w-full md:max-w-xs">
             Open Card
           </Button>
@@ -1535,6 +1622,15 @@ export function EvmCards() {
   const [payAsset, setPayAsset] = useState<"USDG" | "ETH">("USDG");
   const [openStage, setOpenStage] = useState<string | null>(null);
   const { walletClient, address } = useEvmWallet();
+  // Derived, not synced. An effect that setStates on mount is what this repo's
+  // lint rule exists to stop, and there is nothing to subscribe to here —
+  // storage only changes when this component writes it, so a counter re-reads.
+  const [openEpoch, setOpenEpoch] = useState(0);
+  const pendingOpen = useMemo(
+    () => (address ? readOpen(address) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [address, openEpoch]
+  );
 
   // Returns rows rather than setting them, so the mount effect can do its
   // setState inside a promise callback instead of synchronously in the body.
@@ -1633,6 +1729,59 @@ export function EvmCards() {
   }
 
   /**
+   * Turn a landed payment into a card, waiting for it to land if it hasn't.
+   *
+   * Relay filling and the provider crediting are separate events, minutes
+   * apart: the first attempt at this asked immediately, got "payment hasn't
+   * landed yet", and left someone paid up with no card. Polls rather than
+   * fails, at 15s — our own limiter allows six calls a minute per wallet, and
+   * tripping it would turn a slow payment into a broken one.
+   */
+  async function issue(open: PendingOpen) {
+    const deadline = Date.now() + 6 * 60_000;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        setOpenStage(attempt === 0 ? "Issuing the card…" : "Waiting for the payment to clear…");
+        await api("/api/cards", {
+          action: "create",
+          depositId: open.depositId,
+          bin: BIN,
+          amount: open.amount,
+          nameOnCard: open.nameOnCard,
+          tierId: open.tierId,
+        });
+        break;
+      } catch (e) {
+        const landed = /hasn't landed/i.test((e as Error).message);
+        if (!landed || Date.now() > deadline) throw e;
+        await new Promise((r) => setTimeout(r, 15_000));
+      }
+    }
+    if (address) forgetOpen(address);
+    setOpenEpoch((n) => n + 1);
+    toast("success", "Card created");
+    setActive(0);
+    setStage("cover");
+    setName("");
+    const fresh = (await fetchCards()).cards;
+    setCards((prev) => merge(fresh, prev));
+  }
+
+  /** Finish a payment that outlived its tab. */
+  async function resume() {
+    if (!pendingOpen) return;
+    setBusy(true);
+    try {
+      await issue(pendingOpen);
+    } catch (e) {
+      toast("error", (e as Error).message);
+    } finally {
+      setOpenStage(null);
+      setBusy(false);
+    }
+  }
+
+  /**
    * Pay for the card, then issue it. Same rail as a top-up: open a deposit
    * intent, bridge to the address it hands back, and only then ask the server
    * for a card — which re-checks with the provider that the money arrived.
@@ -1663,27 +1812,29 @@ export function EvmCards() {
         to: { chainId: SOLANA_CHAIN_ID, currency: SOLANA_USDT, recipient: d.pay_address },
       });
 
-      setOpenStage(`Confirm ${quote.inFormatted} ${quote.inSymbol} in your wallet…`);
-      await executeFunding(quote, ACTIVE_EVM_CHAIN, walletClient, (s) => setOpenStage(s));
-
-      setOpenStage("Issuing the card…");
-      await api("/api/cards", {
-        action: "create",
+      // Written down before a single token moves. Everything after this point
+      // is recoverable only if we still know which payment was ours — lose the
+      // id and the money is credited to an account the user cannot reach.
+      rememberOpen(address, {
         depositId: d.id,
-        bin: BIN,
         amount: amountNum,
         nameOnCard: name.trim(),
         tierId: tier.id,
       });
-      toast("success", "Card created");
-      setActive(0);
-      setStage("cover");
-      setName("");
-      const fresh = (await fetchCards()).cards;
-      setCards((prev) => merge(fresh, prev));
+
+      setOpenStage(`Confirm ${quote.inFormatted} ${quote.inSymbol} in your wallet…`);
+      await executeFunding(quote, ACTIVE_EVM_CHAIN, walletClient, (s) => setOpenStage(s));
+
+      await issue({
+        depositId: d.id,
+        amount: amountNum,
+        nameOnCard: name.trim(),
+        tierId: tier.id,
+      });
     } catch (e) {
-      // The bridge may have gone through even so. Don't phrase this as though
-      // the money is safe — it may be sitting as an unspent deposit.
+      // The bridge may well have gone through. Never phrase this as though the
+      // money is gone — it is most likely sitting as an unspent deposit, and
+      // the banner on the cover will offer to finish the job.
       toast("error", (e as Error).message);
     } finally {
       setOpenStage(null);
@@ -1703,6 +1854,10 @@ export function EvmCards() {
           onBack={cards?.length ? () => setStage("cover") : undefined}
           error={loadError}
           onRetry={retryLoad}
+          pending={pendingOpen}
+          onResume={resume}
+          busy={busy}
+          stage={openStage}
         />
       </div>
     );
